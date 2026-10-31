@@ -35,6 +35,19 @@ BIOMES = [
     ('SNOW',       'nieve / snow'),
 ]
 
+# gym arenas, indoors so one scene each. The firmware picks one by the leader's
+# type (ARENA_OF_TYPE in TamaPoke.ino); the enum below is emitted in this order.
+ARENAS = [
+    ('ARENA ROCK',     'rock, ground, fighting, normal'),
+    ('ARENA WATER',    'water'),
+    ('ARENA ELECTRIC', 'electric, steel'),
+    ('ARENA GRASS',    'grass, bug, flying'),
+    ('ARENA FIRE',     'fire'),
+    ('ARENA GHOST',    'ghost, psychic, poison, dark, fairy'),
+    ('ARENA ICE',      'ice'),
+    ('ARENA DRAGON',   'dragon, and every Champion'),
+]
+
 
 def read_png(path):
     d = open(path, 'rb').read()
@@ -120,23 +133,28 @@ def main():
            '// Indexed by biome (see dex.h) then 0 = day, 1 = night.', '']
     names = []
     total = 0
+
+    def emit(file, nm, note):
+        nonlocal total
+        w, h, ch, rows = load(os.path.join(SRC, file + '.png'))
+        pal, idx = to_indexed(w, h, ch, rows)
+        names.append((nm, w, h, len(pal)))
+        total += len(idx) + len(pal) * 2
+        out.append('// %s  (%s)' % (file, note))
+        out.append('static const uint16_t %s_PAL[%d] = {' % (nm, len(pal)))
+        out.append('  ' + ', '.join('0x%04X' % c for c in pal))
+        out.append('};')
+        out.append('static const uint8_t %s_IDX[%d] = {' % (nm, len(idx)))
+        for r in range(0, len(idx), 40):
+            out.append('  ' + ','.join(str(v) for v in idx[r:r + 40]) + ',')
+        out.append('};')
+        out.append('')
+
     for bi, (base, note) in enumerate(BIOMES):
         for ni, suffix in enumerate(('', ' NIGHT')):
-            path = os.path.join(SRC, base + suffix + '.png')
-            w, h, ch, rows = load(path)
-            pal, idx = to_indexed(w, h, ch, rows)
-            nm = 'BACK_%d_%d' % (bi, ni)
-            names.append((nm, w, h, len(pal)))
-            total += len(idx) + len(pal) * 2
-            out.append('// %s  (%s)' % (base + suffix, note))
-            out.append('static const uint16_t %s_PAL[%d] = {' % (nm, len(pal)))
-            out.append('  ' + ', '.join('0x%04X' % c for c in pal))
-            out.append('};')
-            out.append('static const uint8_t %s_IDX[%d] = {' % (nm, len(idx)))
-            for r in range(0, len(idx), 40):
-                out.append('  ' + ','.join(str(v) for v in idx[r:r + 40]) + ',')
-            out.append('};')
-            out.append('')
+            emit(base + suffix, 'BACK_%d_%d' % (bi, ni), note)
+    for ai, (file, note) in enumerate(ARENAS):
+        emit(file, 'ARENA_%d' % ai, note)
     out.append('struct BackScene {')
     out.append('  const uint16_t *pal;')
     out.append('  const uint8_t *idx;')
@@ -150,6 +168,14 @@ def main():
             nm, w, h, pc = names[bi * 2 + ni]
             row.append('{ %s_PAL, %s_IDX, %d, %d, %d }' % (nm, nm, w, h, pc))
         out.append('  { %s },' % ', '.join(row))
+    out.append('};')
+    out.append('')
+    out.append('enum : uint8_t { %s, ARENA_COUNT };'
+               % ', '.join(f.replace(' ', '_') for f, _ in ARENAS))
+    out.append('static const BackScene ARENAS[ARENA_COUNT] = {')
+    for ai in range(len(ARENAS)):
+        nm, w, h, pc = names[len(BIOMES) * 2 + ai]
+        out.append('  { %s_PAL, %s_IDX, %d, %d, %d },' % (nm, nm, w, h, pc))
     out.append('};')
     open(OUT, 'w').write('\n'.join(out) + '\n')
     print('backgrounds: %d, %.1f KB of data -> %s'

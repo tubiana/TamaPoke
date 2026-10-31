@@ -17,6 +17,7 @@ Personal, non-commercial fan project. Code MIT; sprites CC BY-NC (PMD SpriteColl
 | `calendar.h` | Dates from the RTC, the calendar events and their egg types; pure, so `calendar_test` sweeps whole years |
 | `i18n.cpp/.h` | 6-language string table (ES/EN/FR/DE/IT/PT) |
 | `audio.cpp/.h` | ES8311 codec over I2S |
+| `backs.h` | GENERATED (`tools/gen_backs.py`) from `tools/backs/*.png`: the biome backdrops (supplied art) and the gym arenas (`tools/gen_scenes.py`, ours). Any PNG under a scene's name replaces it |
 | `audio_mix.h` | How loud each kind of sound is, and the music stepper -- shared with `loud_test`, which measures the balance |
 | `rtcbat.cpp/.h` | PCF85063 RTC + AXP2101 battery/PMU/PWR button |
 | `sdmon.cpp/.h` | SD sprite streaming + USB `PUT` file transfer |
@@ -87,6 +88,7 @@ second caller has its own copy of it, and nobody notices until a player does.
 | evolution threshold | `canEvolveNow()` | `renderCardProgress()` | the card would promise an evolution that never came |
 | a region needs its pack | `sdBegin()`, at mount | files arriving later over `PUT` | the pack you just downloaded stayed greyed out until a reboot |
 | the 3 s hold is for the pet | a list of screens to EXCLUDE | every screen not on that list | holding a PARTY SLOT offered to release the LIVE pet |
+| a fight keeps its own region | `btlRegion` was DECLARED for it | nothing ever assigned it | every ladder past Kanto chained into Kanto's team and paid a Kanto badge |
 
 **A guard written as a list of EXCLUSIONS is this trap pre-loaded.** The hold
 was gated by `!galleryOpen && !cardOpen && !kbOpen && !clockOpen`, so every

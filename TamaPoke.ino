@@ -36,7 +36,7 @@
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
-#define FW_VERSION "3.17"
+#define FW_VERSION "3.18"
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   LCD_CS, LCD_SCLK, LCD_SDIO0, LCD_SDIO1, LCD_SDIO2, LCD_SDIO3);
@@ -3988,9 +3988,43 @@ static void drawBack(const BackScene &b, int y0) {
   }
 }
 
-// Which scene: the FOE's biome, since a battle happens where it lives, and the
-// same day/night split the main screen already uses.
+// A gym fight happens in the leader's arena, picked by the type they
+// specialise in; every Champion gets the grand hall. Indexed by PkType.
+static const uint8_t ARENA_OF_TYPE[TYPE_COUNT] = {
+  ARENA_ROCK,      // normal
+  ARENA_FIRE,      // fire
+  ARENA_WATER,     // water
+  ARENA_ELECTRIC,  // electric
+  ARENA_GRASS,     // grass
+  ARENA_ICE,       // ice
+  ARENA_ROCK,      // fighting
+  ARENA_GHOST,     // poison
+  ARENA_ROCK,      // ground
+  ARENA_GRASS,     // flying
+  ARENA_GHOST,     // psychic
+  ARENA_GRASS,     // bug
+  ARENA_ROCK,      // rock
+  ARENA_GHOST,     // ghost
+  ARENA_DRAGON,    // dragon
+  ARENA_GHOST,     // dark
+  ARENA_ELECTRIC,  // steel
+  ARENA_GHOST,     // fairy
+};
+
+// The arena for the running fight, or ARENA_COUNT when it is not a gym fight
+// (LAN, the BATTLE console command) and should stay where the foe lives.
+uint8_t battleArena() {
+  if (btlTrainer < 0 || btlTrainer >= TRAINER_COUNT) return ARENA_COUNT;
+  if (btlTrainer == TRAINER_COUNT - 1) return ARENA_DRAGON;
+  uint8_t t = BTL_TRAINERS[btlTrainer].type;
+  return t < TYPE_COUNT ? ARENA_OF_TYPE[t] : ARENA_ROCK;
+}
+
+// Which scene: the leader's arena in a gym, otherwise the FOE's biome, since a
+// wild battle happens where it lives, with the main screen's day/night split.
 static void drawBattleBack() {
+  uint8_t a = battleArena();
+  if (a < ARENA_COUNT) { drawBack(ARENAS[a], 30); return; }
   int16_t dex = btlFoe.dex;
   if (dex < 1 || dex > DEX_COUNT) { gfx->fillCircle(CX, CY, 231, UI_BG_DAY); return; }
   uint8_t bi = DEX_TBL[dex].biome;
@@ -4154,6 +4188,11 @@ void startTrainerBattle(uint8_t idx, bool hard) {
   // size cap on top, plus a smarter AI and better opposing IVs.
   buildSquad(top, hard ? tr.count : TRAINER_TEAM_MAX, squadMask);
   if (!btlSquadN) return;
+  // The fight remembers its own region: the replacements, the badge, the win
+  // screen and the arena all read BTL_TRAINERS. It was declared for this and
+  // never set, so every ladder past Kanto chained into KANTO's team after its
+  // first creature and paid out a Kanto badge.
+  btlRegion = gymRegion;
   btlTrainer = (int8_t)idx;
   btlHard = hard;
   btlFoeAt = 0;
