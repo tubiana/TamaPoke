@@ -17,7 +17,7 @@ WORK="$HERE/work"
 mkdir -p "$WORK/shots" "$ROOT/manual"
 
 # the sketch as C++, with the prototypes arduino-cli would have generated
-python "$EMU/genproto.py" "$ROOT/TamaPoke.ino" >/dev/null
+(cd "$EMU" && python genproto.py "$ROOT/TamaPoke.ino" >/dev/null)   # genproto writes proto.h into the cwd
 { echo '#include "proto.h"'; cat "$ROOT/TamaPoke.ino"; } > "$EMU/sketch.cpp"
 
 g++ -std=c++17 -O1 -w -I"$EMU" -I"$ROOT" -DSPRITE_DIR='"x"' -o "$WORK/cap" \
