@@ -104,7 +104,11 @@
       <button id="autou" data-region="unova" disabled>⬇️ Unova (~40 MB)</button>
       <button id="autok" data-region="kalos" disabled>⬇️ Kalos (~21 MB)</button>
       <button id="autoa" data-region="alola" disabled>⬇️ Alola (~24 MB)</button>
+      <button id="autocry" data-region="cries" data-pak="cries.pak" disabled>🔊 Cries, every region (~12 MB)</button>
     </div>
+    <p class="note">🔊 The cries are optional: without them the creatures are simply
+       silent. They are the games' own sounds (© The Pokémon Company), fetched by
+       <code>tools/pack_cries.py</code> from <a href="https://github.com/PokeAPI/cries" target="_blank">PokeAPI/cries</a>.</p>
     <p class="note">Have your own <code>.bin</code> files? <label style="cursor:pointer;text-decoration:underline">pick them manually<input id="files" type="file" accept=".bin" multiple disabled hidden></label></p>
     <p class="note">🎨 Want to make your own sprites? See <a href="https://github.com/DylanPDao/TamaPoke#generate-and-load-the-sprites-yourself" target="_blank">how to generate &amp; load them</a> in the repo.</p>
     <div class="bar" id="bar"><div></div></div>
@@ -228,8 +232,16 @@ document.getElementById('connect').onclick = async () => {
 // paks sitting there works for local testing without touching this.
 const PAK_RELEASE = 'https://github.com/DylanPDao/TamaPoke/releases/latest/download';
 
+// A button may name its own file (data-pak): the cries are one pack for every
+// region, kept apart from the sprites. Everything else is sprites-<region>.pak.
+function pakFile(region) {
+  const b = document.querySelector(`[data-region="${region}"]`);
+  return (b && b.dataset.pak) || `sprites-${region}.pak`;
+}
+
 function pakUrls(region) {
-  return [`sprites-${region}.pak`, `${PAK_RELEASE}/sprites-${region}.pak`];
+  const f = pakFile(region);
+  return [f, `${PAK_RELEASE}/${f}`];
 }
 
 async function fetchPak(region) {

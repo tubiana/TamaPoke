@@ -36,7 +36,7 @@
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
-#define FW_VERSION "3.12"
+#define FW_VERSION "3.14"
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   LCD_CS, LCD_SCLK, LCD_SDIO0, LCD_SDIO1, LCD_SDIO2, LCD_SDIO3);
@@ -76,6 +76,7 @@ bool galleryDirty = false;
 // ALL is deliberately not offered here -- it is the thing being replaced.
 #define GAL_PER_PAGE 16
 #define GAL_REGIONS (REGION_COUNT - 1)          // the real regions, not ALL
+#define GAL_CELL 80                             // drawThumb centres in a box this size
 #define GAL_LO (REGIONS[galleryRegion % GAL_REGIONS].lo)
 #define GAL_HI (REGIONS[galleryRegion % GAL_REGIONS].hi)
 #define GAL_SPAN (GAL_HI - GAL_LO + 1)
@@ -149,6 +150,24 @@ char partyBannerName[14] = "";
 #define PARTY_GRID_Y 88
 
 bool clockOpen = false;       // pantalla de ajuste de hora (deslizar abajo)
+// SETTINGS has two pages: 0 is the clock, sound and language; 1 is OPTIONS --
+// kid mode and the needs speed. Paged by a horizontal swipe or a tap on the
+// dots, like every other paged screen (and so it is in swipe_test).
+uint8_t settingsPage = 0;
+#define SETTINGS_PAGES 2
+// Kid mode caps the volume here. The cap lives in the sketch, beside the only
+// controls that change the volume, rather than in audio.cpp.
+#define KID_VOL_MAX 5
+uint8_t volMax() { return pet.kidMode ? KID_VOL_MAX : 10; }
+
+// The quiz: a silhouette, its cry, three names. Reached from the Pokedex
+// chooser, QUIZ_PER_DAY a day (Pet::quizLeft()).
+bool quizOpen = false;
+int16_t quizAns = 0;
+int16_t quizOpt[3] = { 0, 0, 0 };
+int8_t quizPicked = -1;            // -1 = not answered yet
+uint32_t quizHearAt = 0;
+#define QUIZ_HEAR_GAP_MS 3000UL    // replaying the cry: not faster than this
 int clockH = 12, clockM = 0;  // hora en edicion
 
 // escena de bano: espuma sobre el bicho y limpieza al reventar
@@ -211,7 +230,7 @@ enum : uint8_t {
   SCR_STARTER = 0, SCR_REGION, SCR_GALLERY, SCR_DEXPICK, SCR_MOVEPICK, SCR_BOX,
   SCR_PARTY, SCR_KEYBOARD, SCR_CARD, SCR_PLAYER, SCR_CLOCK, SCR_GYM, SCR_GYMPICK,
   SCR_LAN, SCR_PICK, SCR_BATTLE, SCR_WIN, SCR_LEARN, SCR_TRAIN, SCR_MENU,
-  SCR_GAME, SCR_MAIN, SCR_COUNT
+  SCR_GAME, SCR_MAIN, SCR_QUIZ, SCR_COUNT
 };
 extern const char *const SCREEN_NAME[SCR_COUNT];   // const is internal linkage in C++
 
@@ -222,6 +241,9 @@ extern const char *const SCREEN_NAME[SCR_COUNT];   // const is internal linkage 
 // builds; only arduino-cli is.
 void bootReport();
 uint8_t uiCurrentScreen();
+// the quiz (near the top) and OPTIONS draw with these, defined far below
+void drawThumb(const uint8_t *b, int x, int y, int s, bool sil);
+void drawClockBtn(int x, int y, const char *l);
 // Declared here because renderMonSheet() and the sheet's tap handlers use both
 // ~4000 lines above where they are defined. The emulator generates a proto.h and
 // would compile it either way; arduino-cli would not, and that has shipped once.
@@ -235,7 +257,7 @@ const char *const SCREEN_NAME[SCR_COUNT] = {
   "starter", "region", "gallery", "dexpick", "movepick", "box",
   "party", "keyboard", "card", "player", "clock", "gym", "gympick",
   "lan", "pick", "battle", "win", "learn", "train", "menu",
-  "minigame", "main"
+  "minigame", "main", "quiz"
 };
 
 // Badge art for a region, or nullptr when that region has none yet.
@@ -723,9 +745,179 @@ void ensureMon() {
   }
 }
 
+// ---------- cries ----------
+// When a creature makes itself heard. Watched from here, off what the pet's
+// STATE did since the last frame, rather than called from inside pet.cpp:
+// pet.cpp links into every test binary, and an edge seen here cannot disagree
+// with what actually happened -- a hatch is the egg going away, however it went.
+//
+// Kept rare on purpose -- this is a toy a child will hold. The events cry once
+// each; a caress only sometimes, and never twice inside CRY_CARESS_GAP_MS.
+#define CRY_CARESS_ODDS 6            // one caress in six...
+#define CRY_CARESS_GAP_MS 60000UL    // ...and at most once a minute
+static uint32_t lastCaressCry = 0;
+
+bool cryOnCaress(uint32_t now) {
+  if (lastCaressCry && now - lastCaressCry < CRY_CARESS_GAP_MS) return false;
+  if (random(CRY_CARESS_ODDS)) return false;
+  lastCaressCry = now ? now : 1;     // 0 means "never"
+  return true;
+}
+
+// ---------- quiz ----------
+// A random species of `r` that can be drawn. Rejection sampling, bounded: every
+// region is mostly art, and a miss falls back to the region's first species.
+static int16_t quizSpecies(uint8_t r) {
+  const RegionInfo &rg = REGIONS[r % GAL_REGIONS];
+  for (int t = 0; t < 64; t++) {
+    int16_t d = (int16_t)(rg.lo + random(rg.hi - rg.lo + 1));
+    if (speciesHasArt(d)) return d;
+  }
+  return (int16_t)rg.lo;
+}
+
+// One question. All three names come from ONE region whose pack is on the
+// card, so the options are of an era and every one of them can be drawn.
+void quizNew() {
+  uint8_t regs[GAL_REGIONS], nr = 0;
+  for (uint8_t r = 0; r < GAL_REGIONS; r++)
+    if (regionAvailable(r)) regs[nr++] = r;
+  uint8_t r = nr ? regs[random(nr)] : 0;
+  quizAns = quizSpecies(r);
+  uint8_t at = (uint8_t)random(3);
+  for (uint8_t i = 0; i < 3; i++) {
+    if (i == at) { quizOpt[i] = quizAns; continue; }
+    int16_t d = quizAns;
+    for (int t = 0; t < 32; t++) {
+      d = quizSpecies(r);
+      bool dup = (d == quizAns);
+      for (uint8_t j = 0; j < i; j++) dup = dup || (d == quizOpt[j]);
+      if (!dup) break;
+    }
+    quizOpt[i] = d;
+  }
+  quizPicked = -1;
+  cryPlay(quizAns);
+  quizHearAt = millis();
+}
+
+void openQuiz() {
+  quizOpen = true;
+  quizPicked = -1;
+  if (pet.quizLeft()) quizNew();     // none left: the screen says come back tomorrow
+}
+
+#define QUIZ_SIL_Y 150                // centre of the silhouette
+#define QUIZ_ROW_X 98
+#define QUIZ_ROW_W 270
+#define QUIZ_ROW_H 46
+#define QUIZ_ROW_Y(i) (256 + (i) * 52)
+void renderQuiz() {
+  gfx->fillScreen(RGB565_BLACK);
+  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  if (!pet.quizLeft() && quizPicked < 0) {
+    gfx->setTextColor(UI_INK);
+    gfx->setTextSize(2);
+    gfx->setCursor(CX - (int)strlen(T(S_QUIZ_DONE)) * 6, 210);
+    gfx->print(T(S_QUIZ_DONE));
+    gfx->flush();
+    return;
+  }
+  char head[40];
+  uint16_t hc = UI_INK;
+  if (quizPicked < 0) snprintf(head, sizeof(head), "%s", T(S_QUIZ_Q));
+  else if (quizOpt[quizPicked] == quizAns) { snprintf(head, sizeof(head), "%s", T(S_QUIZ_RIGHT)); hc = UI_BAR_OK; }
+  else { snprintf(head, sizeof(head), T(S_QUIZ_WRONG), dexName(quizAns)); hc = UI_BAR_BAD; }
+  gfx->setTextColor(hc);
+  gfx->setTextSize(2);
+  gfx->setCursor(CX - (int)strlen(head) * 6, 40);
+  gfx->print(head);
+
+  char left[32];
+  snprintf(left, sizeof(left), T(S_QUIZ_LEFT), pet.quizLeft());
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(1);
+  gfx->setCursor(CX - (int)strlen(left) * 3, 64);
+  gfx->print(left);
+
+  // the shadow until it is answered, then the creature itself
+  const uint8_t *th = thumbs.get(quizAns);
+  if (th) drawThumb(th, CX - GAL_CELL / 2, QUIZ_SIL_Y - GAL_CELL / 2, 4, quizPicked < 0);
+  else {
+    gfx->setTextSize(6);
+    gfx->setCursor(CX - 18, QUIZ_SIL_Y - 24);
+    gfx->print("?");
+  }
+  const char *hint = quizPicked < 0 ? T(S_QUIZ_HEAR) : T(S_QUIZ_NEXT);
+  gfx->setTextSize(1);
+  gfx->setCursor(CX - (int)strlen(hint) * 3, 236);
+  gfx->print(hint);
+
+  for (uint8_t i = 0; i < 3; i++) {
+    int y = QUIZ_ROW_Y(i);
+    uint16_t bg = UI_WHITE;
+    if (quizPicked >= 0) {
+      if (quizOpt[i] == quizAns) bg = UI_BAR_OK;            // the right one, always shown
+      else if (i == quizPicked) bg = UI_BAR_BAD;            // the wrong pick
+      else bg = UI_TRACK;
+    }
+    gfx->fillRoundRect(QUIZ_ROW_X, y, QUIZ_ROW_W, QUIZ_ROW_H, 12, bg);
+    gfx->drawRoundRect(QUIZ_ROW_X, y, QUIZ_ROW_W, QUIZ_ROW_H, 12, UI_INK);
+    const char *nm = dexName(quizOpt[i]);
+    gfx->setTextColor(UI_INK);
+    gfx->setTextSize(2);
+    gfx->setCursor(CX - (int)strlen(nm) * 6, y + 15);
+    gfx->print(nm);
+  }
+  gfx->flush();
+}
+
+void quizTap(int16_t x, int16_t y) {
+  if (!pet.quizLeft() && quizPicked < 0) { quizOpen = false; return; }   // done for today
+  if (quizPicked >= 0) {                 // answered: any tap moves on
+    sfxPlay(SFX_TAP);
+    if (pet.quizLeft()) quizNew();
+    else quizPicked = -1;                // that was the last one: say so
+    return;
+  }
+  for (uint8_t i = 0; i < 3; i++) {
+    int ry = QUIZ_ROW_Y(i);
+    if (x < QUIZ_ROW_X || x > QUIZ_ROW_X + QUIZ_ROW_W || y < ry - 3 || y > ry + QUIZ_ROW_H + 3) continue;
+    quizPicked = (int8_t)i;
+    bool right = (quizOpt[i] == quizAns);
+    pet.quizAnswered(right);             // spends one of today's, cheers the pet if right
+    sfxPlay(right ? SFX_MEDAL : SFX_TAP);  // a wrong answer is not scolded
+    return;
+  }
+  // the silhouette: hear it again, but not on every frantic tap
+  if (y >= 80 && y <= 240 && millis() - quizHearAt > QUIZ_HEAR_GAP_MS) {
+    cryPlay(quizAns);
+    quizHearAt = millis();
+  }
+}
+
+void cryWatch() {
+  static bool seen = false, wasEgg = true, wasEvolving = false;
+  static uint8_t wasCeremony = CER_NONE;
+  bool egg = pet.isEgg(), evo = pet.evolving();
+  uint8_t cer = pet.ceremony;
+  // the first frame only records: booting is not a hatch. And nothing cries at
+  // a dark screen -- an evolution finishing in a pocket at night stays quiet.
+  if (seen && !screenOff) {
+    if (wasEgg && !egg) cryPlay(pet.speciesId);               // hatched, or brought back
+    else if (wasEvolving && !evo && !egg) cryPlay(pet.speciesId);  // the new form, once revealed
+    if (cer != CER_NONE && wasCeremony == CER_NONE) cryPlay(pet.speciesId);  // leaving
+  }
+  seen = true;
+  wasEgg = egg;
+  wasEvolving = evo;
+  wasCeremony = cer;
+}
+
 void loop() {
   uint32_t now = millis();
   pet.update(now);
+  cryWatch();
 
   // The link is pumped here rather than from the LAN screen, because it has to
   // keep running through the battle too: linkNowPoll() drains what the radio
@@ -1188,6 +1380,7 @@ void openClock();  // prototipo
 
 void onSwipeV(int dir) {
   if (pet.awaitingStarter()) return;  // bloqueado durante la eleccion de inicial
+  if (quizOpen) { quizOpen = false; return; }   // any swipe leaves the quiz
   if (uiCurrentScreen() == SCR_DEXPICK || uiCurrentScreen() == SCR_GYMPICK)
     return;                 // on the chooser, vertical does nothing: pick a row
   if (menuOpen) { menuOpen = false; return; }   // any swipe closes the menu
@@ -1428,6 +1621,7 @@ bool monSheetConfirmTap(int16_t x, int16_t y, bool fromBox) {
   uiConfirmRects(&c1t, &c1b, &c2t, &c2b);
   if (x < CONFIRM_BTN_X || x > CONFIRM_BTN_X + CONFIRM_BTN_W) return false;
   if (y >= c1t && y <= c1b) {            // YES -- and it does not come back
+    cryPlay(fromBox ? party.box[boxDetail - 1].dex : party.slots[partyDetail - 1].dex);
     if (fromBox) { party.boxReleaseAt(boxDetail - 1); boxDetail = 0; }
     else { party.releaseAt(partyDetail - 1); partyDetail = 0; }
     // A half-finished swap named a slot that may now be empty, so disarm both
@@ -1548,6 +1742,7 @@ void onSwipe(int dir) {
   // screen by closing it is the bug this project shipped four times.
   if (rpickSwipe(dir)) return;
   if (pet.awaitingStarter()) return;  // bloqueado durante la eleccion de inicial
+  if (quizOpen) { quizOpen = false; return; }   // any swipe leaves the quiz
   if (menuOpen) { menuOpen = false; return; }   // any swipe closes the menu
   if (battleOpen) return;   // no swiping out of a fight
   if (pickOpen) {   // horizontal pages the candidates, as everywhere else
@@ -1596,7 +1791,13 @@ void onSwipe(int dir) {
   }
   if (gameOpen) { leaveGame(); return; }   // swipe out, keeping what you earned
   if (spdOpen) { leaveSpeed(); return; }
-  if (kbOpen || clockOpen) return;
+  if (kbOpen) return;
+  if (clockOpen) {   // pages SETTINGS; swipe up is still the way out
+    int p = (int)settingsPage + (dir > 0 ? -1 : 1);   // left advances, as on the card
+    settingsPage = (uint8_t)(p < 0 ? 0 : (p > SETTINGS_PAGES - 1 ? SETTINGS_PAGES - 1 : p));
+    sfxPlay(SFX_TAP);
+    return;
+  }
   if (cardOpen) {  // dentro de la ficha: cambiar entre las 4 paginas
     int p = (int)cardPage + (dir > 0 ? -1 : 1);  // izquierda avanza
     cardPage = p < 0 ? 0 : (p > CARD_PAGES - 1 ? CARD_PAGES - 1 : p);
@@ -1651,6 +1852,10 @@ void onTap(int16_t x, int16_t y) {
         break;
       }
     }
+    return;
+  }
+  if (quizOpen) {
+    quizTap(x, y);
     return;
   }
   if (battleOpen) {
@@ -1824,6 +2029,10 @@ void onTap(int16_t x, int16_t y) {
         galleryDirty = true;
         galleryPick = false;
         sfxPlay(SFX_TAP);
+      } else if (x >= LANBTN_X && x <= LANBTN_X + LANBTN_W &&
+                 y >= LANBTN_Y && y <= LANBTN_Y + LANBTN_H) {
+        sfxPlay(SFX_TAP);       // the QUIZ button, where the gym chooser has LAN
+        openQuiz();
       } else if (y > 380) {
         galleryOpen = false;
       }
@@ -1952,7 +2161,10 @@ void onTap(int16_t x, int16_t y) {
   // tocar al bicho = caricia
   if (inPetZone(x, y)) {
     pet.caress();
-    if (!pet.sleeping) sfxPlay(SFX_HEART);
+    if (!pet.sleeping) {
+      sfxPlay(SFX_HEART);
+      if (!pet.isEgg() && cryOnCaress(millis())) cryPlay(pet.speciesId);
+    }
   }
 }
 
@@ -2116,6 +2328,7 @@ RTC_NOINIT_ATTR uint32_t gCrumbHeap;
 // Which screen is on the panel RIGHT NOW, in the same order render() tests.
 uint8_t uiCurrentScreen() {
   if (pet.awaitingStarter()) return starterRegionDone ? SCR_STARTER : SCR_REGION;
+  if (quizOpen) return SCR_QUIZ;     // drawn over the Pokedex chooser it came from
   if (galleryOpen) return galleryPick ? SCR_DEXPICK : SCR_GALLERY;
   if (movePickOpen) return SCR_MOVEPICK;
   if (partyOpen) return boxOpen ? SCR_BOX : SCR_PARTY;
@@ -2179,6 +2392,10 @@ void render() {
   if (pet.awaitingStarter()) {  // primera partida: region y luego inicial
     if (!starterRegionDone) renderRegionPick(RPICK_FOR_START);
     else renderStarterSelect();
+    return;
+  }
+  if (quizOpen) {
+    renderQuiz();
     return;
   }
   if (galleryOpen) {
@@ -2767,7 +2984,99 @@ void openClock() {
   uint32_t e = pet.lastSeenEpoch ? pet.lastSeenEpoch : rtcEpoch();
   clockH = (e / 3600) % 24;
   clockM = (e / 60) % 60;
+  settingsPage = 0;
   clockOpen = true;
+}
+
+// Which page of SETTINGS this is, as two dots above the title. Tapping them
+// turns the page too, for anyone who does not think to swipe.
+#define SET_DOTS_Y 22
+static void drawSettingsDots() {
+  for (uint8_t d = 0; d < SETTINGS_PAGES; d++) {
+    int cx = CX - 8 + d * 16;
+    if (d == settingsPage) gfx->fillCircle(cx, SET_DOTS_Y, 5, UI_INK);
+    else gfx->drawCircle(cx, SET_DOTS_Y, 5, UI_TRACK);
+  }
+}
+
+// OPTIONS. Both settings are the player's, saved with the game, and apply at
+// once -- there is no OK to forget.
+#define OPT_KID_X 296
+#define OPT_KID_Y 104
+#define OPT_KID_W 92
+#define OPT_KID_H UI_TAP_MIN
+#define OPT_SPD_Y 226                 // the - / + boxes, drawn by drawClockBtn
+#define OPT_MINUS_X 112
+#define OPT_PLUS_X 296
+void renderOptions() {
+  gfx->fillScreen(RGB565_BLACK);
+  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawSettingsDots();
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(3);
+  gfx->setCursor(CX - strlen(T(S_OPTIONS)) * 9, 44);
+  gfx->print(T(S_OPTIONS));
+
+  // kid mode: a switch
+  gfx->setTextSize(2);
+  gfx->setTextColor(UI_INK);
+  gfx->setCursor(80, OPT_KID_Y + 14);
+  gfx->print(T(S_KID_MODE));
+  bool kid = pet.kidMode;
+  const char *kl = kid ? T(S_ON) : T(S_OFF);
+  gfx->fillRoundRect(OPT_KID_X, OPT_KID_Y, OPT_KID_W, OPT_KID_H, 10, kid ? UI_BAR_OK : UI_WHITE);
+  gfx->drawRoundRect(OPT_KID_X, OPT_KID_Y, OPT_KID_W, OPT_KID_H, 10, UI_INK);
+  gfx->setTextColor(kid ? UI_BG_DAY : UI_INK);
+  gfx->setCursor(OPT_KID_X + (OPT_KID_W - (int)strlen(kl) * 12) / 2, OPT_KID_Y + 14);
+  gfx->print(kl);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(1);
+  gfx->setCursor(CX - (int)strlen(T(S_KID_HINT)) * 3, OPT_KID_Y + OPT_KID_H + 12);
+  gfx->print(T(S_KID_HINT));
+
+  // the needs speed: - 50% +
+  gfx->setTextSize(2);
+  gfx->setCursor(CX - (int)strlen(T(S_NEEDS_SPEED)) * 6, OPT_SPD_Y - 30);
+  gfx->print(T(S_NEEDS_SPEED));
+  drawClockBtn(OPT_MINUS_X, OPT_SPD_Y, "-");
+  drawClockBtn(OPT_PLUS_X, OPT_SPD_Y, "+");
+  char pct[8];
+  snprintf(pct, sizeof(pct), "%u%%", pet.drainPct);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(3);
+  gfx->setCursor(CX - (int)strlen(pct) * 9, OPT_SPD_Y + 18);
+  gfx->print(pct);
+  gfx->setTextSize(1);
+  gfx->setCursor(CX - (int)strlen(T(S_NEEDS_HINT)) * 3, OPT_SPD_Y + 74);
+  gfx->print(T(S_NEEDS_HINT));
+
+  char ver[20];
+  snprintf(ver, sizeof(ver), "TamaPoke v%s", FW_VERSION);
+  gfx->setTextColor(UI_TRACK);
+  gfx->setCursor(CX - (int)strlen(ver) * 3, 436);
+  gfx->print(ver);
+  gfx->flush();
+}
+
+void optionsTap(int16_t x, int16_t y) {
+  // generous: these are tapped by a parent, but on a 1.75" round panel
+  if (y >= OPT_KID_Y - 8 && y <= OPT_KID_Y + OPT_KID_H + 8 &&
+      x >= OPT_KID_X - 10 && x <= OPT_KID_X + OPT_KID_W + 10) {
+    bool on = !pet.kidMode;
+    pet.setKidMode(on);
+    if (on && audioVolume() > KID_VOL_MAX) audioSetVolume(KID_VOL_MAX);
+    sfxPlay(SFX_TAP);
+    return;
+  }
+  if (y >= OPT_SPD_Y - 6 && y <= OPT_SPD_Y + 64) {
+    if (x >= OPT_MINUS_X - 6 && x <= OPT_MINUS_X + 64) {
+      pet.setDrainPct(pet.drainPct - DRAIN_STEP);
+      sfxPlay(SFX_TAP);
+    } else if (x >= OPT_PLUS_X - 6 && x <= OPT_PLUS_X + 64) {
+      pet.setDrainPct(pet.drainPct + DRAIN_STEP);
+      sfxPlay(SFX_TAP);
+    }
+  }
 }
 
 void applyClock() {
@@ -2800,8 +3109,10 @@ void drawClockBtn(int x, int y, const char *l) {
 static const char *const LANG_CODES[LANG_COUNT] = { "ES", "EN", "FR", "DE", "IT", "PT" };
 
 void renderClock() {
+  if (settingsPage == 1) { renderOptions(); return; }
   gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawSettingsDots();
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(3);
   gfx->setCursor(CX - strlen(T(S_SET_TIME)) * 9, 44);
@@ -2840,7 +3151,7 @@ void renderClock() {
     uint8_t v = audioVolume();
     for (int i = 0; i < 2; i++) {
       int bx = i ? VOL_PLUS_X : VOL_MINUS_X;
-      bool live = i ? (v < 10) : (v > 0);
+      bool live = i ? (v < volMax()) : (v > 0);   // kid mode stops + at KID_VOL_MAX
       gfx->fillRoundRect(bx, LANG_PILL_Y, VOL_BTN_W, LANG_PILL_H, 8,
                          live ? UI_WHITE : UI_TRACK);
       gfx->drawRoundRect(bx, LANG_PILL_Y, VOL_BTN_W, LANG_PILL_H, 8, UI_INK);
@@ -2891,6 +3202,12 @@ void renderClock() {
 }
 
 void clockTap(int16_t x, int16_t y) {
+  if (y < SET_DOTS_Y + 16 && x > CX - 40 && x < CX + 40) {   // the page dots
+    settingsPage = (uint8_t)((settingsPage + 1) % SETTINGS_PAGES);
+    sfxPlay(SFX_TAP);
+    return;
+  }
+  if (settingsPage == 1) { optionsTap(x, y); return; }
   if (y >= 190 && y <= 248) {  // fila de botones +/-
     if (x >= 104 && x < 162) clockH = (clockH + 23) % 24;
     else if (x >= 170 && x < 228) clockH = (clockH + 1) % 24;
@@ -2910,7 +3227,7 @@ void clockTap(int16_t x, int16_t y) {
       return;
     }
     if (x >= VOL_PLUS_X && x < VOL_PLUS_X + VOL_BTN_W) {
-      if (audioVolume() < 10) audioSetVolume(audioVolume() + 1);
+      if (audioVolume() < volMax()) audioSetVolume(audioVolume() + 1);
       sfxPlay(SFX_TAP);
       return;
     }
@@ -3085,7 +3402,7 @@ void drawMoveRow(int y, uint8_t mv, bool highlight, int16_t dex) {
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
   gfx->setCursor(82, y + 8);
-  gfx->print(m.name);
+  gfx->print(moveName(mv));
   // There is no per-type palette (DexEntry.accent is per species), and inventing
   // one by hand would duplicate what gen_dex.py generates. Colouring same-type
   // moves in the species accent is more useful anyway: STAB is a 1.5x damage
@@ -3228,6 +3545,7 @@ static void drawBattleBack() {
 // Streams a side's sprite if it is not already the one loaded. Called whenever
 // a creature steps in, never per frame.
 static void btlSyncSprite(uint8_t who, const Combatant &c) {
+  cryPlay(c.dex);   // every step-in comes through here, so every one is heard
   int16_t key = c.dex * (c.shiny ? -1 : 1);
   if (btlPmdDex[who] == key && btlPmd[who].loaded) return;
   btlPmd[who].unload();
@@ -3268,8 +3586,8 @@ static void btlNarrate(const Combatant &actor, const Combatant &target, const Tu
   if (lg.skipped) return;
   btlSfxFor(lg);
   if (lg.hurtSelf) { btlSay(T(S_BTL_HURTSELF)); return; }
-  if (lg.charged) { btlSay(T(S_BTL_USED), actor.name, MOVE_TBL[lg.move].name); return; }
-  if (lg.move) btlSay(T(S_BTL_USED), actor.name, MOVE_TBL[lg.move].name);
+  if (lg.charged) { btlSay(T(S_BTL_USED), actor.name, moveName(lg.move)); return; }
+  if (lg.move) btlSay(T(S_BTL_USED), actor.name, moveName(lg.move));
   if (lg.missed) { btlSay(T(S_BTL_MISS), actor.name); return; }
   if (lg.immune) { btlSay(T(S_BTL_IMMUNE)); return; }
   if (lg.crit) btlSay(T(S_BTL_CRIT));
@@ -3468,8 +3786,8 @@ static void btlApplyResult() {
   btlFoe.ailment = r.hostAil;
 
   btlMsgCount = 0;
-  if (r.hostMove) btlSay(T(S_BTL_USED), btlFoe.name, MOVE_TBL[r.hostMove].name);
-  if (r.guestMove) btlSay(T(S_BTL_USED), btlYou.name, MOVE_TBL[r.guestMove].name);
+  if (r.hostMove) btlSay(T(S_BTL_USED), btlFoe.name, moveName(r.hostMove));
+  if (r.guestMove) btlSay(T(S_BTL_USED), btlYou.name, moveName(r.guestMove));
   if (r.guestDmg) { btlHitUntil[0] = now + BTL_HIT_MS; sfxPlay(SFX_HIT); }
   if (r.hostDmg) { btlHitUntil[1] = now + BTL_HIT_MS; sfxPlay(SFX_HIT); }
   if (btlYou.fainted()) {
@@ -3920,7 +4238,7 @@ void renderBattle() {
       gfx->setTextColor(UI_INK);
       gfx->setTextSize(1);
       gfx->setCursor(x + 10, y + 12);
-      gfx->print(MOVE_TBL[mv].name);
+      gfx->print(moveName(mv));
       // Same chip as the move list: in a fight the type IS the decision, and
       // grey 6px text was the least visible thing on the busiest screen.
       int cw = drawTypeChip(x + 10, y + 26, MOVE_TBL[mv].type);
@@ -4964,6 +5282,17 @@ static void renderRegionPick(uint8_t mode) {
     gfx->setTextSize(2);
     gfx->setCursor(CX - strlen(T(S_LAN)) * 6, LANBTN_Y + 14);
     gfx->print(T(S_LAN));
+  } else if (mode == RPICK_FOR_DEX) {
+    // the same spot on the Pokedex chooser is the quiz, with today's count
+    uint8_t left = pet.quizLeft();
+    char q[20];
+    snprintf(q, sizeof(q), "%s %u/%u", T(S_QUIZ), left, QUIZ_PER_DAY);
+    gfx->fillRoundRect(LANBTN_X, LANBTN_Y, LANBTN_W, LANBTN_H, 11, left ? UI_BG_DAY : UI_TRACK);
+    gfx->drawRoundRect(LANBTN_X, LANBTN_Y, LANBTN_W, LANBTN_H, 11, UI_INK);
+    gfx->setTextColor(UI_INK);
+    gfx->setTextSize(2);
+    gfx->setCursor(CX - (int)strlen(q) * 6, LANBTN_Y + 14);
+    gfx->print(q);
   }
   if (pages > 1) {                        // dots: which page of regions this is
     int total = pages * 16 - 8;
@@ -5017,8 +5346,8 @@ void renderLearn() {
   gfx->print(head);
   gfx->setTextColor(DEX_TBL[pet.speciesId].accent);
   gfx->setTextSize(3);
-  gfx->setCursor(CX - (int)strlen(MOVE_TBL[mv].name) * 9, 66);
-  gfx->print(MOVE_TBL[mv].name);
+  gfx->setCursor(CX - (int)strlen(moveName(mv)) * 9, 66);
+  gfx->print(moveName(mv));
 
   for (int i = 0; i < MOVE_SLOTS; i++) drawMoveRow(LEARN_ROW_Y(i), pet.moves[i], false, pet.speciesId);
 
@@ -5542,7 +5871,6 @@ void keyboardTap(int16_t x, int16_t y) {
 
 #define GAL_X 73
 #define GAL_Y 84
-#define GAL_CELL 80
 
 // dibuja una miniatura centrada en su celda; sil=true la pinta en tinta
 void drawThumb(const uint8_t *b, int x, int y, int s, bool sil) {

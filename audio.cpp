@@ -23,6 +23,14 @@ static bool gReady = false;
 static bool gOn = true;
 static QueueHandle_t gQ = nullptr;
 
+// One queue for effects AND cries, so they play in the order they were asked
+// for: the hatch jingle, then the creature that hatched.
+struct AudioMsg {
+  uint8_t sfx;       // an Sfx, when pcm is null
+  int8_t *pcm;       // a cry: owned by the queue from here on, freed after play
+  uint32_t len;
+};
+
 // ---- I2C del códec ----
 static bool esW(uint8_t reg, uint8_t val) {
   Wire.beginTransmission(ES8311_ADDR);
@@ -125,7 +133,7 @@ static const TuneDef MUSIC[] = {
   { M_VICTORY, 5, false },
 };
 static volatile uint8_t gMusic = MUS_NONE;
-static volatile uint8_t gVol = 7;
+static volatile uint8_t gVol = 3;
 
 static int16_t buf[256 * 2];  // estéreo intercalado (L=R)
 static int16_t mono[256];
@@ -179,8 +187,31 @@ static void pump(uint32_t ms) {
   }
 }
 
+// Loudness of a cry against the synth. A lone synth voice peaks at 15 * 150 *
+// volume; a cry normalised to +-121 at this gain lands a little under it,
+// because a real waveform carries far more energy than a square wave at the
+// same peak and reads as louder. Untuned on a board -- expect to adjust.
+#define CRY_GAIN 14
+
+static void playPcm(const int8_t *pcm, uint32_t len) {
+  if (!gVol) return;   // muted: a cry has no timing anything waits on
+  const int32_t g = (int32_t)gVol * CRY_GAIN;
+  while (len) {
+    size_t n = len > 256 ? 256 : len;
+    for (size_t i = 0; i < n; i++) {
+      int32_t s = (int32_t)pcm[i] * g;
+      if (s > 32767) s = 32767;
+      if (s < -32768) s = -32768;
+      buf[i * 2] = buf[i * 2 + 1] = (int16_t)s;
+    }
+    i2s.write((uint8_t *)buf, n * 4);
+    pcm += n;
+    len -= n;
+  }
+}
+
 static void audioTask(void *) {
-  uint8_t id;
+  AudioMsg msg;
   // where each music channel has got to, and when its current note ends
   uint16_t mi1 = 0, mi2 = 0;
   uint32_t at1 = 0, at2 = 0, clock = 0;
@@ -195,7 +226,18 @@ static void audioTask(void *) {
     // An effect always wins the melody voice. With three voices a cue that
     // mixed politely underneath would just be mud; cutting through is both
     // simpler and the right priority.
-    if (xQueueReceive(gQ, &id, wantAudio ? 0 : pdMS_TO_TICKS(40)) == pdTRUE) {
+    if (xQueueReceive(gQ, &msg, wantAudio ? 0 : pdMS_TO_TICKS(40)) == pdTRUE) {
+      if (msg.pcm) {
+        // The music voices just hold still while a cry plays and pick up where
+        // they were, the same as under an effect.
+        if (gOn && gReady) {
+          if (!ampOn) { digitalWrite(PA, HIGH); delay(6); ampOn = true; }
+          playPcm(msg.pcm, msg.len);
+        }
+        free(msg.pcm);
+        continue;
+      }
+      uint8_t id = msg.sfx;
       if (gOn && gReady && id < SFX_COUNT) {
         if (!ampOn) { digitalWrite(PA, HIGH); delay(6); ampOn = true; }
         const SfxDef &d = SFX[id];
@@ -281,18 +323,26 @@ void audioBegin() {
   Preferences p;
   p.begin("tamapoke", true);
   gOn = p.getBool("snd", true);
-  gVol = p.getUChar("vol", 7);
-  if (gVol > 10) gVol = 7;
+  gVol = p.getUChar("vol", 3);   // a new device starts quiet: it may be in a child's hands
+  if (gVol > 10) gVol = 3;
   p.end();
 
   gReady = true;
-  gQ = xQueueCreate(8, sizeof(uint8_t));
+  gQ = xQueueCreate(8, sizeof(AudioMsg));
   xTaskCreatePinnedToCore(audioTask, "audio", 4096, nullptr, 1, nullptr, 0);
   sfxPlay(SFX_HATCH);  // jingle de arranque (confirma que suena)
 }
 
 void sfxPlay(uint8_t id) {
-  if (gReady && gOn && gQ) xQueueSend(gQ, &id, 0);  // descarta si la cola esta llena
+  AudioMsg m = { id, nullptr, 0 };
+  if (gReady && gOn && gQ) xQueueSend(gQ, &m, 0);  // descarta si la cola esta llena
+}
+
+void audioPlayPcm(int8_t *pcm, uint32_t len) {
+  if (!pcm) return;
+  AudioMsg m = { 0, pcm, len };
+  // refused -- no audio, sound off, or a full queue -- means it is still ours
+  if (!(gReady && gOn && gQ && len) || xQueueSend(gQ, &m, 0) != pdTRUE) free(pcm);
 }
 
 void audioSetEnabled(bool on) {

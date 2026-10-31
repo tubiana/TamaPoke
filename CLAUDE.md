@@ -11,7 +11,7 @@ Personal, non-commercial fan project. Code MIT; sprites CC BY-NC (PMD SpriteColl
 | `TamaPoke.ino` | Main sketch (~2.3k LOC): UI, screens, touch, serial console, `FW_VERSION` |
 | `pet.cpp/.h` | Game state machine: stats, tick, evolution, eggs, save/load, balance constants |
 | `species.h` / `dex.h` | The 151: names, typings, evolution chains, base stats, rarity tiers, favourite berry |
-| `dex_names.h` | GENERATED (`tools/gen_dex_names.py`): species names per UI language. Read ONLY through `dexName()`; `DEX_TBL[].name` is the canonical English one for the console, the LAN wire and tests |
+| `dex_names.h` / `move_names.h` | GENERATED (`tools/gen_dex_names.py`, `gen_move_names.py`): species names per UI language. Read ONLY through `dexName()` / `moveName()`; the tables' own `.name` is the canonical English for the console, the LAN wire and tests, and `dexname_test` fails if a screen prints it |
 | `types.h` | Type-effectiveness helpers over the generated 18x18 chart in `dex.h` |
 | `party.cpp/.h` | The 6 retired pets banked by farewell/release (not runaway) |
 | `i18n.cpp/.h` | 6-language string table (ES/EN/FR/DE/IT/PT) |
@@ -19,7 +19,7 @@ Personal, non-commercial fan project. Code MIT; sprites CC BY-NC (PMD SpriteColl
 | `rtcbat.cpp/.h` | PCF85063 RTC + AXP2101 battery/PMU/PWR button |
 | `sdmon.cpp/.h` | SD sprite streaming + USB `PUT` file transfer |
 | `pin_config.h` | Board pinout — from the official Waveshare repo, don't invent values |
-| `tools/*.py` | Sprite pipeline (PMD fetch/pack, thumbs, bundle, USB send) |
+| `tools/*.py` | Sprite pipeline (PMD fetch/pack, thumbs, bundle, USB send); `pack_cries.py` builds the optional cries pack |
 | `tools/emu/` | Desktop emulator: runs the real firmware in an SDL window |
 | `web/` | ESP Web Tools installer page + prebuilt `tamapoke.bin` + `sprites-<region>.pak` (committed: release assets have no CORS) |
 

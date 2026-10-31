@@ -13,6 +13,8 @@
 #include "i18n.h"
 #include <cstdio>
 #include <cstring>
+#include <string>
+#include "moves.h"
 uint32_t g_seed=5; FakeSerial Serial; FakeESP ESP; FakeWire Wire;
 volatile int g_touchX=0,g_touchY=0; volatile bool g_touchDown=false; bool wasPressed=false;
 uint32_t millis(){return 0;} void FakeESP::restart(){exit(0);}
@@ -91,6 +93,60 @@ int main(){
     Combatant c; gLang = LANG_EN; combatantFromParty(c, m);
     ck(!strcmp(c.name, DEX_TBL[740].name) && strlen(c.name) == 12,
        "battle: a 12-letter name is not clipped");
+  }
+
+  // ---- move names: the same rules, and the 12-character cap of a move button ----
+  {
+    int unsafeM = 0, longM = 0, trM[LANG_COUNT] = { 0 };
+    for (int l = 0; l < LANG_COUNT; l++) {
+      gLang = (Lang)l;
+      for (int i = 1; i < MOVE_COUNT; i++) {
+        const char *n = moveName(i);
+        if (!n || !*n || !fontSafe(n)) { if (unsafeM++ < 5) printf("  bad move %s #%d\n", LANG_NAME[l], i); continue; }
+        if (strlen(n) > 12) { if (longM++ < 5) printf("  long move %s #%d \"%s\"\n", LANG_NAME[l], i, n); }
+        if (strcmp(n, MOVE_TBL[i].name)) trM[l]++;
+      }
+    }
+    ck(unsafeM == 0, "every move name in every language uses only the font's characters");
+    ck(longM == 0, "every move name fits a move button (12)");
+    ck(trM[LANG_EN] == 0 && trM[LANG_PT] == 0, "English and Portuguese keep the canonical move names");
+    ck(trM[LANG_FR] > 60 && trM[LANG_DE] > 60, "French and German translate most moves");
+    gLang = LANG_FR;
+    int flame = 0;
+    for (int i = 1; i < MOVE_COUNT; i++) if (!strcmp(MOVE_TBL[i].name, "FLAMETHROWER")) flame = i;
+    ck(flame && !strcmp(moveName(flame), "LANCE-FLAMME"), "FR: FLAMETHROWER is LANCE-FLAMME, the short form");
+    ck(!strcmp(moveName(0), MOVE_TBL[0].name) && !strcmp(moveName(250), MOVE_TBL[0].name),
+       "move 0 and out of range are the empty move, not a read off the end");
+  }
+
+  // ---- the CALLERS: no screen may print the canonical tables directly ----
+  // A source scan, because the sketch's screens cannot all be driven from here
+  // and a new one is exactly where a raw DEX_TBL[x].name would slip back in.
+  // Serial lines are exempt: the console speaks the canonical English.
+  {
+    std::string root(__FILE__);
+    root = root.substr(0, root.find("tools/emu/tests"));
+    FILE *f = fopen((root + "TamaPoke.ino").c_str(), "rb");
+    int raw = 0, lines = 0;
+    if (f) {
+      char line[1024];
+      while (fgets(line, sizeof(line), f)) {
+        lines++;
+        if (strstr(line, "Serial.")) continue;
+        const char *p = line;
+        while ((p = strstr(p, "_TBL[")) != nullptr) {
+          bool table = (p - line >= 3) && (!strncmp(p - 3, "DEX_TBL[", 8) || !strncmp(p - 4, "MOVE_TBL[", 9));
+          const char *close = strchr(p, ']');
+          if (table && close && !strncmp(close, "].name", 6)) {
+            if (raw++ < 5) printf("  raw name at TamaPoke.ino:%d: %s", lines, line);
+          }
+          p += 5;
+        }
+      }
+      fclose(f);
+    }
+    ck(lines > 1000, "read the sketch (the scan below is not vacuous)");
+    ck(raw == 0, "no screen prints DEX_TBL[].name or MOVE_TBL[].name directly");
   }
 
   printf("%s\n", bad ? "FAIL" : "PASS");
