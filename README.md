@@ -13,15 +13,28 @@ A gen-1-Pokémon-inspired tamagotchi for the
 over QSPI, CST9217 touch over I2C). Raise any of the 386, evolve it, train it
 and complete them all (shinies included).
 
-> ### 🙏 This is a fork of [**socquique/TamaPoke**](https://github.com/socquique/TamaPoke) by **Quique Tortosa**
+> ### 🙏 A fork of a fork: two people built what this stands on
 >
-> Quique wrote the original TamaPoke — the firmware, the sprite pipeline, the
-> six-language UI, the web installer, the whole thing. This fork builds on that
-> work; it did not start it. If you like this, go **[star the
-> original](https://github.com/socquique/TamaPoke)**.
+> This repository is a fork of [**DylanPDao/TamaPoke**](https://github.com/DylanPDao/TamaPoke)
+> by **Dylan Dao**, which is itself a fork of
+> [**socquique/TamaPoke**](https://github.com/socquique/TamaPoke) by **Quique Tortosa**.
 >
-> Original: MIT © 2026 Quique Tortosa. Changes in this fork are MIT on the same
-> terms.
+> - **Quique Tortosa** created TamaPoke — the firmware, the PMD sprite pipeline,
+>   the six-language UI, the ES8311 audio bring-up and the browser installer.
+> - **Dylan Dao** made it a game — the move-based battle system, the gym ladders
+>   and Elite 4 for every region, the party and the box, LAN battles between two
+>   devices, the save backup, the Game Boy synth, and the Pokédex's growth from
+>   151 to 809 species.
+> - **This fork** (Thibault Tubiana) adds species and move names in the UI
+>   language, the creatures' cries, a kid mode, the daily quiz, calendar events,
+>   a birthday present and stickers, the date page, a printable manual for kids
+>   (EN/FR), and gym arenas drawn by code.
+>
+> If you like this, go **star [the original](https://github.com/socquique/TamaPoke)
+> and [Dylan's fork](https://github.com/DylanPDao/TamaPoke)**.
+>
+> MIT © 2026 Quique Tortosa. The changes by Dylan Dao and in this fork are MIT on
+> the same terms.
 
 > **Personal, non-commercial fan project.** Code is MIT; the sprites are from
 > PMD SpriteCollab (CC BY-NC, Pokémon © Nintendo/Game Freak), and the 3D case is
@@ -770,6 +783,8 @@ To test fast: lower `PET_TICK_MS`, `MINUTES_PER_LEVEL` and `FAREWELL_AGE_MIN` in
 All sprites: [PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab)
 (community, CC BY-NC). Base stats: [PokéAPI](https://pokeapi.co). Pokémon is a ™ of
 Nintendo / Game Freak / The Pokémon Company. Non-commercial, personal-use project.
+Code: **Quique Tortosa** ([original](https://github.com/socquique/TamaPoke)),
+**Dylan Dao** ([fork](https://github.com/DylanPDao/TamaPoke)) and this fork.
 Full list in [`CREDITS.md`](CREDITS.md).
 
 ## License
