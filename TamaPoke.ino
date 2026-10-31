@@ -36,7 +36,7 @@
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
-#define FW_VERSION "3.12"
+#define FW_VERSION "3.13"
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   LCD_CS, LCD_SCLK, LCD_SDIO0, LCD_SDIO1, LCD_SDIO2, LCD_SDIO3);
@@ -723,9 +723,47 @@ void ensureMon() {
   }
 }
 
+// ---------- cries ----------
+// When a creature makes itself heard. Watched from here, off what the pet's
+// STATE did since the last frame, rather than called from inside pet.cpp:
+// pet.cpp links into every test binary, and an edge seen here cannot disagree
+// with what actually happened -- a hatch is the egg going away, however it went.
+//
+// Kept rare on purpose -- this is a toy a child will hold. The events cry once
+// each; a caress only sometimes, and never twice inside CRY_CARESS_GAP_MS.
+#define CRY_CARESS_ODDS 6            // one caress in six...
+#define CRY_CARESS_GAP_MS 60000UL    // ...and at most once a minute
+static uint32_t lastCaressCry = 0;
+
+bool cryOnCaress(uint32_t now) {
+  if (lastCaressCry && now - lastCaressCry < CRY_CARESS_GAP_MS) return false;
+  if (random(CRY_CARESS_ODDS)) return false;
+  lastCaressCry = now ? now : 1;     // 0 means "never"
+  return true;
+}
+
+void cryWatch() {
+  static bool seen = false, wasEgg = true, wasEvolving = false;
+  static uint8_t wasCeremony = CER_NONE;
+  bool egg = pet.isEgg(), evo = pet.evolving();
+  uint8_t cer = pet.ceremony;
+  // the first frame only records: booting is not a hatch. And nothing cries at
+  // a dark screen -- an evolution finishing in a pocket at night stays quiet.
+  if (seen && !screenOff) {
+    if (wasEgg && !egg) cryPlay(pet.speciesId);               // hatched, or brought back
+    else if (wasEvolving && !evo && !egg) cryPlay(pet.speciesId);  // the new form, once revealed
+    if (cer != CER_NONE && wasCeremony == CER_NONE) cryPlay(pet.speciesId);  // leaving
+  }
+  seen = true;
+  wasEgg = egg;
+  wasEvolving = evo;
+  wasCeremony = cer;
+}
+
 void loop() {
   uint32_t now = millis();
   pet.update(now);
+  cryWatch();
 
   // The link is pumped here rather than from the LAN screen, because it has to
   // keep running through the battle too: linkNowPoll() drains what the radio
@@ -1428,6 +1466,7 @@ bool monSheetConfirmTap(int16_t x, int16_t y, bool fromBox) {
   uiConfirmRects(&c1t, &c1b, &c2t, &c2b);
   if (x < CONFIRM_BTN_X || x > CONFIRM_BTN_X + CONFIRM_BTN_W) return false;
   if (y >= c1t && y <= c1b) {            // YES -- and it does not come back
+    cryPlay(fromBox ? party.box[boxDetail - 1].dex : party.slots[partyDetail - 1].dex);
     if (fromBox) { party.boxReleaseAt(boxDetail - 1); boxDetail = 0; }
     else { party.releaseAt(partyDetail - 1); partyDetail = 0; }
     // A half-finished swap named a slot that may now be empty, so disarm both
@@ -1952,7 +1991,10 @@ void onTap(int16_t x, int16_t y) {
   // tocar al bicho = caricia
   if (inPetZone(x, y)) {
     pet.caress();
-    if (!pet.sleeping) sfxPlay(SFX_HEART);
+    if (!pet.sleeping) {
+      sfxPlay(SFX_HEART);
+      if (!pet.isEgg() && cryOnCaress(millis())) cryPlay(pet.speciesId);
+    }
   }
 }
 
@@ -3228,6 +3270,7 @@ static void drawBattleBack() {
 // Streams a side's sprite if it is not already the one loaded. Called whenever
 // a creature steps in, never per frame.
 static void btlSyncSprite(uint8_t who, const Combatant &c) {
+  cryPlay(c.dex);   // every step-in comes through here, so every one is heard
   int16_t key = c.dex * (c.shiny ? -1 : 1);
   if (btlPmdDex[who] == key && btlPmd[who].loaded) return;
   btlPmd[who].unload();

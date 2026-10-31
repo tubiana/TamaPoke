@@ -76,6 +76,19 @@ the PMD sprites above: **ship `tools/gen_avatars.py` and not `avatars.h`**, so
 each user fetches the art themselves — the script needs only `curl` and takes a
 second to run.
 
+## Cries
+
+`/cries/cNNN.raw` on the SD card, built by `tools/pack_cries.py` from
+[PokeAPI/cries](https://github.com/PokeAPI/cries): the pre-Gen-6 "legacy" cries
+for #1-649 and the current ones past that, converted to 8-bit 16 kHz PCM.
+
+**The audio is © The Pokémon Company** -- the PokeAPI repository says so in its
+own LICENSE; its CC0 covers the collection, not the sounds. Same standing as the
+player avatars, so the same arrangement: the script is in the repo, the audio is
+not (`.gitignore` excludes the cache, the converted files and `web/cries.pak`).
+Each user fetches the cries themselves. The pack is separate from the sprite
+packs on purpose, so the sprites never carry them.
+
 ## Battle backgrounds
 
 `tools/backs/*.png` — twelve 240x112 scenes, one day and one night per biome,

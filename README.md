@@ -3,7 +3,7 @@
 [![Flash in browser](https://img.shields.io/badge/flash-in%20browser-FF6B00?logo=googlechrome&logoColor=white)](https://dylanpdao.github.io/TamaPoke/web/)
 [![MakerWorld](https://img.shields.io/badge/MakerWorld-3D%20case-00AE42?logo=bambulab&logoColor=white)](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)
 ![Board](https://img.shields.io/badge/board-ESP32--S3%20round%20AMOLED-E7352C?logo=espressif&logoColor=white)
-![Firmware](https://img.shields.io/badge/firmware-v3.12-8A2BE2)
+![Firmware](https://img.shields.io/badge/firmware-v3.13-8A2BE2)
 ![Code](https://img.shields.io/badge/code-MIT-blue)
 ![Languages](https://img.shields.io/badge/languages-6-FFCB05)
 [![Stars](https://img.shields.io/github/stars/DylanPDao/TamaPoke?style=flat&logo=github&color=yellow)](https://github.com/DylanPDao/TamaPoke/stargazers)
@@ -635,6 +635,14 @@ German, Italian, Portuguese — switchable from the settings screen (swipe down)
 Species names follow it too (SALAMECHE in French, GLUMANDA in German), from
 PokeAPI via `tools/gen_dex_names.py`, accents folded since the font has none.
 Portuguese, Spanish and Italian keep the English names, as their games do.
+
+**Cries (optional):** with the cries pack on the card, a creature cries when it
+hatches, when an evolution is revealed, when it leaves (farewell, running away,
+release) and when it steps into a fight. A caress makes it cry only sometimes --
+one in six, and never twice within a minute -- because this is a toy a child
+holds. Nothing cries while the screen is off. Build the pack with
+`python tools/pack_cries.py` (needs `pip install soundfile numpy`) and send it from
+the installer's 🔊 button; see CREDITS.md for why it is not committed.
 
 ## Backgrounds: biome + real time
 

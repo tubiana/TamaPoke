@@ -44,8 +44,9 @@ def dex_of(path):
     return int(digits) if digits else 0
 
 
-def write_pak(out, files):
-    names = ['mons/' + os.path.basename(f) for f in files]
+def write_pak(out, files, prefix='mons/'):
+    # prefix is the folder on the card; pack_cries.py writes cries/
+    names = [prefix + os.path.basename(f) for f in files]
     blobs = [open(f, 'rb').read() for f in files]
     with open(out, 'wb') as o:
         o.write(b'TPAK')

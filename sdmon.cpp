@@ -2,6 +2,7 @@
 #include "noart.h"
 #include "pin_config.h"
 #include "pet.h"   // gRegionArt, REGIONS -- the mask this narrows
+#include "audio.h"  // cryPlay hands the PCM to the audio task
 #include <FS.h>
 #include <SD_MMC.h>
 
@@ -159,11 +160,32 @@ bool sdBegin() {
   if (sdReady) {
     Serial.printf("SD montada: %llu MB\n", SD_MMC.cardSize() / (1024ULL * 1024ULL));
     SD_MMC.mkdir("/mons");
+    SD_MMC.mkdir("/cries");   // PUT cannot create a folder, so the cries pack needs it here
     sdScanRegionArt();
   } else {
     Serial.println("SD no detectada (el juego usa los sprites de flash)");
   }
   return sdReady;
+}
+
+// Matches CRY_MAX_BYTES in tools/pack_cries.py: 2.5 s at 16 kHz, 8-bit. A file
+// past it is not a cry this tool wrote, and is refused rather than allocated.
+#define CRY_MAX_BYTES 40000
+
+void cryPlay(int16_t dex) {
+  if (!sdReady || !audioEnabled() || dex < 1 || dex > DEX_COUNT) return;
+  char path[24];
+  snprintf(path, sizeof(path), "/cries/c%03u.raw", (unsigned)dex);
+  // exists() first: open() on a missing file logs an error, and a card with no
+  // cries pack would print one for every hatch, swap and caress
+  if (!SD_MMC.exists(path)) return;
+  File f = SD_MMC.open(path);
+  if (!f) return;
+  size_t n = f.size();
+  int8_t *pcm = (n && n <= CRY_MAX_BYTES) ? (int8_t *)ps_malloc(n) : nullptr;
+  if (pcm && f.read((uint8_t *)pcm, n) != n) { free(pcm); pcm = nullptr; }
+  f.close();
+  if (pcm) audioPlayPcm(pcm, (uint32_t)n);   // the audio task frees it
 }
 
 bool SdMon::load(int16_t dexNum, bool shiny) {

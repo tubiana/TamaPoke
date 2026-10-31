@@ -133,6 +133,13 @@ bool pwrShortPressed() { return false; }
 // --- audio (silent) ---
 void audioBegin() {}
 void sfxPlay(uint8_t) {}
+// Cries are silent here too, but COUNTED, so a test can see which ones the
+// sketch asked for -- that decision is the part worth testing; the playback is
+// a buffer handed to I2S.
+int g_emuCries = 0;
+int16_t g_emuLastCry = 0;
+void cryPlay(int16_t dex) { g_emuCries++; g_emuLastCry = dex; }
+void audioPlayPcm(int8_t *pcm, uint32_t) { free(pcm); }
 // no radio here; the protocol itself is exercised by tests/link_test.cpp
 struct Link;
 // No radio here at all, which is why lossy_test drives Link directly instead

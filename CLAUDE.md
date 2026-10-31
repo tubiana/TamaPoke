@@ -19,7 +19,7 @@ Personal, non-commercial fan project. Code MIT; sprites CC BY-NC (PMD SpriteColl
 | `rtcbat.cpp/.h` | PCF85063 RTC + AXP2101 battery/PMU/PWR button |
 | `sdmon.cpp/.h` | SD sprite streaming + USB `PUT` file transfer |
 | `pin_config.h` | Board pinout — from the official Waveshare repo, don't invent values |
-| `tools/*.py` | Sprite pipeline (PMD fetch/pack, thumbs, bundle, USB send) |
+| `tools/*.py` | Sprite pipeline (PMD fetch/pack, thumbs, bundle, USB send); `pack_cries.py` builds the optional cries pack |
 | `tools/emu/` | Desktop emulator: runs the real firmware in an SDL window |
 | `web/` | ESP Web Tools installer page + prebuilt `tamapoke.bin` + `sprites-<region>.pak` (committed: release assets have no CORS) |
 

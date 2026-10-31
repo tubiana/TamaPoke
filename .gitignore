@@ -33,6 +33,14 @@ tools/pokeapi_cache/
 # let each user package the sprites from the original sources.
 tools/sdcard/mons/*.bin
 
+# Pokemon cries (tools/pack_cries.py). The audio is (c) The Pokemon Company, so
+# like the avatars it is fetched by a script rather than committed. web/cries.pak
+# is ignored until the owner decides to publish it -- remove that line to let
+# the Pages installer offer the button.
+tools/cries_cache/
+tools/sdcard/cries/
+web/cries.pak
+
 # Emulator save files and downloaded generator intermediates: local scratch, not
 # artefacts. They were committed by accident once.
 tamapoke.nvs
