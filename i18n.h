@@ -156,6 +156,37 @@ enum StrId : uint8_t {
   S_SET_DATE,       // SETTINGS: the date page's title
   S_DAY, S_MONTH, S_YEAR,   // ...and its three column labels
   S_QUIZ_TODAY_FMT, // "Today: %u/%u", the quiz's day score above its stars
+  // exploring, catching, the Pokedex box, experience
+  S_EXPLORE,  // menu row, and the map title
+  S_PL_MEADOW,  // the eight places, PL_* order
+  S_PL_BEACH,
+  S_PL_FOREST,
+  S_PL_VOLCANO,
+  S_PL_MOUNTAIN,
+  S_PL_SNOW,
+  S_PL_OCEAN,
+  S_PL_CAVE,
+  S_EXP_HINT,  // the scene: what to do
+  S_EXP_EMPTY,  // no outing left
+  S_EXP_NEXT_FMT,  // "+1 in %uh%02u" until the next outing
+  S_EXP_FLED_FMT,  // "%s ran away!"
+  S_EXP_APPEARS_FMT,  // "A wild %s appeared!"
+  S_EXP_NOBODY,  // a place with nobody in the installed packs
+  S_EXP_NOTEAM,  // nobody to fight with yet
+  S_BALL,  // the battle menu cell
+  S_CATCH_OK_FMT,  // "Gotcha! %s was caught!"
+  S_CATCH_FAIL,  // the ball broke open
+  S_WILD_KO,  // the wild one fainted: a hint to use a ball
+  S_KEEP_Q_FMT,  // "Keep which %s?" when one is already in the Pokedex
+  S_KEEP_OLD_FMT,  // "OLD Lv.%u"
+  S_KEEP_NEW_FMT,  // "NEW Lv.%u"
+  S_DEXBOX_FMT,  // "In the Pokedex: Lv.%u"
+  S_TO_TEAM,  // Pokedex page: move it to the team
+  S_TO_DEX,  // Pokedex page: put one of the team here
+  S_STORED_FMT,  // "%s is in the Pokedex"
+  S_XP_FMT,  // "%s +%u XP"
+  S_GREW_FMT,  // "%s grew to Lv.%u!"
+  S_EVOLVED_FMT,  // "%s became %s!"
   STR_COUNT
 };
 

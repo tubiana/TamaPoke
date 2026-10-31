@@ -29,6 +29,7 @@
 #include "party.h"
 #include "save.h"
 #include "pet.h"
+#include "dexbox.h"
 #include "sdmon.h"
 #include "rtcbat.h"
 #include "i18n.h"
@@ -114,12 +115,14 @@ bool menuOpen = false;
 #define MENU_Y 75
 #define MENU_W 320
 #define MENU_H 316
-#define MENU_ROW_H 52
-#define MENU_ROW_GAP 6
-// 5 rows: STATS / POKEDEX / SETTINGS / RETIRE / CLOSE. At MENU_Y 75 the panel
-// spans 75..391 and the round display gives a half-width of 171 there against
-// the 160 a row needs, so the corners stay on glass.
-#define MENU_ROWS 5
+#define MENU_ROW_H 46
+#define MENU_ROW_GAP 4
+// 6 rows: STATS / EXPLORE / POKEDEX / SETTINGS / RETIRE / CLOSE, each row's
+// index IS its MENU_* id. At MENU_Y 75 the panel spans 75..391 and the round
+// display gives a half-width of 171 there against the 160 a row needs, so the
+// corners stay on glass; 46 px rows keep every one above UI_TAP_MIN.
+enum : uint8_t { MENU_STATS = 0, MENU_EXPLORE, MENU_POKEDEX, MENU_SETTINGS, MENU_RETIRE, MENU_CLOSE };
+#define MENU_ROWS 6
 #define MENU_ROW_Y(i) (MENU_Y + 16 + (i) * (MENU_ROW_H + MENU_ROW_GAP))
 
 // Party screen. partyPick != 0 means the newcomer needs a slot: the player
@@ -247,7 +250,7 @@ enum : uint8_t {
   SCR_STARTER = 0, SCR_REGION, SCR_GALLERY, SCR_DEXPICK, SCR_MOVEPICK, SCR_BOX,
   SCR_PARTY, SCR_KEYBOARD, SCR_CARD, SCR_PLAYER, SCR_CLOCK, SCR_GYM, SCR_GYMPICK,
   SCR_LAN, SCR_PICK, SCR_BATTLE, SCR_WIN, SCR_LEARN, SCR_TRAIN, SCR_MENU,
-  SCR_GAME, SCR_MAIN, SCR_QUIZ, SCR_COUNT
+  SCR_GAME, SCR_MAIN, SCR_QUIZ, SCR_EXPLORE, SCR_COUNT
 };
 extern const char *const SCREEN_NAME[SCR_COUNT];   // const is internal linkage in C++
 
@@ -258,6 +261,16 @@ extern const char *const SCREEN_NAME[SCR_COUNT];   // const is internal linkage 
 // builds; only arduino-cli is.
 void bootReport();
 uint8_t uiCurrentScreen();
+void renderExplore();
+void exploreTap(int16_t x, int16_t y);
+void exploreAfterBattle();
+void openExplore();
+void drawBallIcon(int cx, int cy, int r);
+bool startWildBattle(int16_t dex, uint8_t lvl, uint8_t place);
+const BackScene &placeScene(uint8_t pl, bool night);
+extern bool exploreOpen;
+extern int8_t expPlace;
+extern bool expKeepAsk;
 // the quiz (near the top) and OPTIONS draw with these, defined far below
 void drawThumb(const uint8_t *b, int x, int y, int s, bool sil);
 void drawClockBtn(int x, int y, const char *l);
@@ -278,7 +291,7 @@ const char *const SCREEN_NAME[SCR_COUNT] = {
   "starter", "region", "gallery", "dexpick", "movepick", "box",
   "party", "keyboard", "card", "player", "clock", "gym", "gympick",
   "lan", "pick", "battle", "win", "learn", "train", "menu",
-  "minigame", "main", "quiz"
+  "minigame", "main", "quiz", "explore"
 };
 
 // Badge art for a region, or nullptr when that region has none yet.
@@ -358,6 +371,8 @@ static void drawBtlBack();
 static void btlLinkPoll();   // defined with the battle code, called from render()
 static void btlSwitchTo(uint8_t i);
 static void btlResolve(uint8_t yourMove);
+static void btlAfterTurn();
+static void btlBegin();
 // The peer's whole team, kept live. A trainer's replacements are built fresh
 // from TRAINERS[] because they only ever arrive once; a linked opponent can
 // switch OUT and back IN, so its creatures have to remember how battered they
@@ -490,6 +505,14 @@ uint8_t gymPage = 0;
 #define GYM_ROWS 5
 #define GYM_ROW_Y(i) (110 + (i) * 50)
 int8_t btlTrainer = -1;      // index into TRAINERS, -1 = a one-off fight
+// A wild fight met while exploring: drawn in its place, with a BALL beside
+// FIGHT. btlWildMon is the creature itself, built whole before the fight, so
+// the one that is caught is exactly the one that was fought.
+bool btlWild = false;
+uint8_t btlWildPlace = 0;
+PartyMon btlWildMon;
+bool btlCaught = false;      // set by the ball; the explore screen keeps it
+uint32_t btlBallUntil = 0;   // the caught ball rocks until then
 bool btlHard = false;
 Combatant btlSquad[TRAINER_TEAM_MAX + 1];
 uint8_t btlSquadN = 0, btlSquadAt = 0;
@@ -1526,6 +1549,7 @@ void handleSerial() {
     if (ok) { Serial.println("DONE"); delay(100); ESP.restart(); }
   } else if (line == "WIPE") {
     pet.factoryReset();     // borra NVS y reinicia -> partida nueva (eleccion de inicial)
+    dexBoxWipe();           // the Pokedex box is a file, not NVS: take it too
     Serial.println("DONE");
     delay(100);
     ESP.restart();
@@ -1674,6 +1698,11 @@ void onSwipeV(int dir) {
     return;                 // on the chooser, vertical does nothing: pick a row
   if (menuOpen) { menuOpen = false; return; }   // any swipe closes the menu
   if (battleOpen) return;   // no swiping out of a fight
+  if (exploreOpen) {        // a scene goes back to the map; the map leaves
+    if (expKeepAsk) return;
+    if (expPlace >= 0) expPlace = -1; else exploreOpen = false;
+    return;
+  }
   if (pickOpen) { pickOpen = false; return; }
   if (lanOpen) { lanLeave(); lanOpen = false; return; }
   if (gymOpen) {
@@ -2034,6 +2063,11 @@ void onSwipe(int dir) {
   if (quizOpen) { quizOpen = false; return; }   // any swipe leaves the quiz
   if (menuOpen) { menuOpen = false; return; }   // any swipe closes the menu
   if (battleOpen) return;   // no swiping out of a fight
+  if (exploreOpen) {        // a scene goes back to the map; the map leaves
+    if (expKeepAsk) return;
+    if (expPlace >= 0) expPlace = -1; else exploreOpen = false;
+    return;
+  }
   if (pickOpen) {   // horizontal pages the candidates, as everywhere else
     uint8_t pages = (pickCandidates() + PICK_PER_PAGE - 1) / PICK_PER_PAGE;
     if (!pages) pages = 1;
@@ -2149,6 +2183,10 @@ void onTap(int16_t x, int16_t y) {
   }
   if (battleOpen) {
     battleTap(x, y);
+    return;
+  }
+  if (exploreOpen) {
+    exploreTap(x, y);
     return;
   }
   if (playerOpen) {
@@ -2274,14 +2312,15 @@ void onTap(int16_t x, int16_t y) {
       if (y < ry || y > ry + MENU_ROW_H) continue;
       sfxPlay(SFX_TAP);
       menuOpen = false;
-      if (i == 0) { cardOpen = true; cardPage = 1; }   // straight to the stats page
-      else if (i == 1) { galleryOpen = true; galleryPick = true; galleryPage = 0; rpickPage = 0; galleryDetail = 0; galleryDirty = true; }
-      else if (i == 2) { openClock(); }
-      else if (i == 3) {
+      if (i == MENU_STATS) { cardOpen = true; cardPage = 1; }   // straight to the stats page
+      else if (i == MENU_EXPLORE) { openExplore(); }
+      else if (i == MENU_POKEDEX) { galleryOpen = true; galleryPick = true; galleryPage = 0; rpickPage = 0; galleryDetail = 0; galleryDirty = true; }
+      else if (i == MENU_SETTINGS) { openClock(); }
+      else if (i == MENU_RETIRE) {
         if (!pet.canRetireNow()) { sfxPlay(SFX_DENY); return; }
         choiceKind = 3; choiceUntil = millis() + 12000;
       }
-      return;                                     // i == 4 is CLOSE: just shut
+      return;                                     // MENU_CLOSE: just shut
     }
     return;
   }
@@ -2650,6 +2689,7 @@ uint8_t uiCurrentScreen() {
   if (kbOpen) return SCR_KEYBOARD;
   if (clockOpen) return SCR_CLOCK;
   if (battleOpen) return btlWinUntil ? SCR_WIN : SCR_BATTLE;
+  if (exploreOpen) return SCR_EXPLORE;    // under its own wild fights
   if (pickOpen) return SCR_PICK;
   if (lanOpen) return SCR_LAN;
   if (gymOpen) return gymPick ? SCR_GYMPICK : SCR_GYM;
@@ -2754,6 +2794,11 @@ void render() {
   if (battleOpen) {
     btlLinkPoll();
     renderBattle();
+    return;
+  }
+  if (exploreOpen) {
+    exploreAfterBattle();
+    renderExplore();
     return;
   }
   if (pickOpen) {
@@ -3971,6 +4016,20 @@ void renderMovePick() {
 // rather than a write per pixel: this is flat pixel art with long horizontal
 // runs, and 240x112 at 2x would otherwise be 26,880 fillRect calls a frame.
 // The round bezel crops the overhang physically, so nothing is clipped here.
+// A ball: red over white, a black band and a button. Used by the catch and
+// by the explore map's pins.
+void drawBallIcon(int cx, int cy, int r) {
+  gfx->fillCircle(cx, cy, r, UI_WHITE);
+  for (int y = -r; y < 0; y++) {             // the red top half, inside the circle
+    int w = (int)sqrtf((float)(r * r - y * y));
+    gfx->drawFastHLine(cx - w, cy + y, 2 * w + 1, 0xE8A4);
+  }
+  gfx->drawCircle(cx, cy, r, RGB565_BLACK);
+  gfx->fillRect(cx - r, cy - 1, 2 * r + 1, 3, RGB565_BLACK);
+  gfx->fillCircle(cx, cy, r / 3 + 1, RGB565_BLACK);
+  gfx->fillCircle(cx, cy, r / 3 - 1, UI_WHITE);
+}
+
 static void drawBack(const BackScene &b, int y0) {
   const int SC = 2;
   int x0 = CX - (b.w * SC) / 2;
@@ -3986,6 +4045,19 @@ static void drawBack(const BackScene &b, int y0) {
       c += run;
     }
   }
+}
+
+// The backdrops' day/night split, the main screen's own hours.
+static bool sceneIsNight() { return sceneHour() < 6 || sceneHour() >= 20; }
+
+// Where each place is drawn. Six of them are the battle biomes, which already
+// have art; the ocean and the volcano have their own (XBACKS), and the cave
+// gets the supplied CAVE scene, which the volcano BIOME borrows for its fights.
+const BackScene &placeScene(uint8_t pl, bool night) {
+  if (pl == PL_OCEAN) return XBACKS[XB_OCEAN][night ? 1 : 0];
+  if (pl == PL_VOLCANO) return XBACKS[XB_VOLCANO][night ? 1 : 0];
+  if (pl == PL_CAVE) return BACKS[PL_VOLCANO][night ? 1 : 0];
+  return BACKS[pl < BACK_BIOMES ? pl : 0][night ? 1 : 0];
 }
 
 // A gym fight happens in the leader's arena, picked by the type they
@@ -4023,14 +4095,14 @@ uint8_t battleArena() {
 // Which scene: the leader's arena in a gym, otherwise the FOE's biome, since a
 // wild battle happens where it lives, with the main screen's day/night split.
 static void drawBattleBack() {
+  if (btlWild) { drawBack(placeScene(btlWildPlace, sceneIsNight()), 30); return; }
   uint8_t a = battleArena();
   if (a < ARENA_COUNT) { drawBack(ARENAS[a], 30); return; }
   int16_t dex = btlFoe.dex;
   if (dex < 1 || dex > DEX_COUNT) { gfx->fillCircle(CX, CY, 231, UI_BG_DAY); return; }
   uint8_t bi = DEX_TBL[dex].biome;
   if (bi >= BACK_BIOMES) bi = 0;
-  bool night = sceneHour() < 6 || sceneHour() >= 20;
-  drawBack(BACKS[bi][night ? 1 : 0], 30);
+  drawBack(BACKS[bi][sceneIsNight() ? 1 : 0], 30);
 }
 
 // Streams a side's sprite if it is not already the one loaded. Called whenever
@@ -4154,6 +4226,7 @@ void startLinkBattle() {
   btlLink = true;
   btlLinkHost = lan.isHost;
   btlTrainer = -1;
+  btlWild = false;
   btlHard = false;
   btlFoeAt = 0;
   btlFoeSquadN = 0;
@@ -4194,6 +4267,7 @@ void startTrainerBattle(uint8_t idx, bool hard) {
   // first creature and paid out a Kanto badge.
   btlRegion = gymRegion;
   btlTrainer = (int8_t)idx;
+  btlWild = false;
   btlHard = hard;
   btlFoeAt = 0;
   const Trainer &t = TRAINERS[idx];
@@ -4230,6 +4304,33 @@ void startBattle(int16_t dex, uint8_t lvl) {
   foe.ageMinutes = (uint32_t)(lvl ? lvl - 1 : 0) * MINUTES_PER_LEVEL;
   foe.relearnFromLevel();
   combatantFromPet(btlFoe, foe);
+  btlTrainer = -1;      // a console fight is nobody's gym: no badge, no arena
+  btlWild = false;
+  btlBegin();
+}
+
+// A wild creature met while exploring. It is built whole (makeMon) BEFORE the
+// fight and fought as that record, so the creature caught is the one fought --
+// same IVs, same moves -- rather than a fresh roll made after the ball lands.
+bool startWildBattle(int16_t dex, uint8_t lvl, uint8_t place) {
+  if (pet.ceremony != CER_NONE || dex < 1 || dex > DEX_COUNT) return false;
+  buildSquad(0, TRAINER_TEAM_MAX, 0xFFFF);
+  if (!btlSquadN) return false;
+  if (!makeMon(dex, lvl, random(WILD_SHINY_ONE_IN) == 0, btlWildMon)) return false;
+  combatantFromParty(btlFoe, btlWildMon);
+  btlTrainer = -1;
+  btlLink = false;
+  btlHard = false;
+  btlWild = true;
+  btlWildPlace = place;
+  btlCaught = false;
+  btlBegin();
+  btlSay(T(S_EXP_APPEARS_FMT), dexName(dex));
+  return true;
+}
+
+// What every one-off fight starts with once both sides are set.
+static void btlBegin() {
   btlMsgCount = 0;
   btlOver = false;
   btlWon = false;
@@ -4405,6 +4506,15 @@ static void btlResolve(uint8_t yourMove) {
   if (btlYou.hp < hp0You) btlHitUntil[0] = now + BTL_HIT_MS;
   if (btlFoe.hp < hp0Foe) btlHitUntil[1] = now + BTL_HIT_MS;
   if (btlLink && btlLinkHost) btlShipResult(yourMove, foeMove, hp0You, hp0Foe);
+  btlAfterTurn();
+}
+
+// The end of a turn, however it was spent -- two moves, or a ball that broke
+// open and handed the foe a free hit: ailments tick, then whoever went down is
+// replaced or the fight is over. One copy, so a ball turn cannot skip a rule
+// a move turn obeys.
+static void btlAfterTurn() {
+  TurnLog lg;
   if (!btlYou.fainted() && !btlFoe.fainted()) {
     battleEndTurn(btlYou, lg);
     if (lg.damage) btlNarrate(btlYou, btlYou, lg);
@@ -4456,6 +4566,8 @@ static void btlResolve(uint8_t yourMove) {
     if (btlLink && btlLinkHost) lan.sendEnd(btlWon);
     if (btlLink) { btlSay("%s", btlWon ? T(S_BTL_WIN) : T(S_BTL_LOSE)); return; }
     if (btlWon && btlTrainer >= 0) { btlWinUntil = millis() + 60000; return; }
+    // A wild creature knocked out is gone; the line says what would have kept it.
+    if (btlWild && btlWon) { btlSay("%s", T(S_WILD_KO)); return; }
     btlSay("%s", T(S_BTL_LOSE));
   }
 }
@@ -4499,9 +4611,15 @@ static void btlSide(int tx, int ty, int sx, int sy, const Combatant &c, uint8_t 
     gfx->setCursor(tx + 18, ty + 28);
     gfx->print(T(AIL_STR[c.ailment]));
   }
+  // Caught: the ball sits where the creature stood, rocking for a moment.
+  uint32_t now = millis();
+  if (who == 1 && btlCaught) {
+    int rock = now < btlBallUntil ? (((btlBallUntil - now) / 120) % 2 ? 4 : -4) : 0;
+    drawBallIcon(sx + 24 + rock, sy + 60, 16);
+    return;
+  }
   // a platform under each creature, so they stand in the scene rather than
   // floating over it
-  uint32_t now = millis();
   int ox = 0, oy = 0;
   bool flash = false;
   if (now < btlFaintUntil[who]) {          // sinks out of frame as it faints
@@ -4689,12 +4807,27 @@ void renderBattle() {
     // rows do not fit: the panel is round, and at that depth the chord is only
     // ~250 px. The lower two reuse the move grid's cells, so they inherit its
     // padded hit areas -- which is what made POKEMON hard to press before.
-    gfx->fillRoundRect(BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H, 10, UI_BG_DAY);
-    gfx->drawRoundRect(BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H, 10, UI_INK);
-    gfx->setTextColor(UI_INK);
-    gfx->setTextSize(2);
-    gfx->setCursor(CX - (int)strlen(T(S_FIGHT)) * 6, BTL_GRID_Y + 14);
-    gfx->print(T(S_FIGHT));
+    if (btlWild) {
+      // In the wild the top row splits: FIGHT, and the BALL beside it. Both
+      // reuse the move grid's cells and so its padded hit areas.
+      const char *top[2] = { T(S_FIGHT), T(S_BALL) };
+      for (int i = 0; i < 2; i++) {
+        int x = BTL_CELL_X(i), y = BTL_CELL_Y(i);
+        gfx->fillRoundRect(x, y, BTL_CELL_W, BTL_CELL_H, 10, i ? UI_BAR_WARN : UI_BG_DAY);
+        gfx->drawRoundRect(x, y, BTL_CELL_W, BTL_CELL_H, 10, UI_INK);
+        gfx->setTextColor(UI_INK);
+        gfx->setTextSize(2);
+        gfx->setCursor(x + (BTL_CELL_W - (int)strlen(top[i]) * 12) / 2, y + 14);
+        gfx->print(top[i]);
+      }
+    } else {
+      gfx->fillRoundRect(BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H, 10, UI_BG_DAY);
+      gfx->drawRoundRect(BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H, 10, UI_INK);
+      gfx->setTextColor(UI_INK);
+      gfx->setTextSize(2);
+      gfx->setCursor(CX - (int)strlen(T(S_FIGHT)) * 6, BTL_GRID_Y + 14);
+      gfx->print(T(S_FIGHT));
+    }
     const char *low[2] = { T(S_BTL_SWITCH), T(S_BTL_RUN) };
     for (int i = 0; i < 2; i++) {
       int x = BTL_CELL_X(i + 2), y = BTL_CELL_Y(i + 2);
@@ -4833,6 +4966,33 @@ static bool btlBackTap(int16_t x, int16_t y) {
 // Running. A gym leader keeps their badge and the fight simply ends; against
 // another device the peer is told, so it does not sit waiting for a move that
 // will never come.
+// The ball. It holds or it does not (catchChancePct: rarer and healthier is
+// harder); if it does not, the throw WAS the turn and the foe acts alone.
+static void btlThrowBall() {
+  uint32_t now = millis();
+  uint8_t pct = catchChancePct(btlFoe.dex, btlFoe.hp, btlFoe.maxHp, pet.kidMode);
+  if ((uint8_t)random(100) < pct) {
+    btlCaught = true;
+    btlOver = true;
+    btlWon = true;
+    btlBallUntil = now + 1500;
+    audioMusic(MUS_VICTORY);
+    sfxPlay(SFX_VICTORY);
+    btlSay(T(S_CATCH_OK_FMT), dexName(btlFoe.dex));
+    return;
+  }
+  sfxPlay(SFX_DENY);
+  btlSay("%s", T(S_CATCH_FAIL));
+  TurnLog lg;
+  uint16_t hp0 = btlYou.hp;
+  uint8_t fm = aiChooseMove(btlFoe, btlYou, false);
+  battleAct(btlFoe, btlYou, fm, lg);
+  btlNarrate(btlFoe, btlYou, lg);
+  if (lg.damage && !lg.hurtSelf) btlLungeUntil[1] = now + BTL_LUNGE_MS;
+  if (btlYou.hp < hp0) btlHitUntil[0] = now + BTL_HIT_MS;
+  btlAfterTurn();
+}
+
 static void btlRun() {
   sfxPlay(SFX_DENY);
   btlFreeSprites();
@@ -4865,7 +5025,10 @@ void battleTap(int16_t x, int16_t y) {
     return;
   }
   if (btlMenu == 0) {
-    if (x >= BTL_GRID_X - BTL_HIT_PAD && x <= BTL_GRID_X + 328 + BTL_HIT_PAD &&
+    if (btlWild) {
+      if (btlCellHit(0, x, y)) { sfxPlay(SFX_TAP); btlMenu = 1; return; }
+      if (btlCellHit(1, x, y)) { btlThrowBall(); return; }
+    } else if (x >= BTL_GRID_X - BTL_HIT_PAD && x <= BTL_GRID_X + 328 + BTL_HIT_PAD &&
         y >= BTL_HIT_Y0(0) && y <= BTL_HIT_Y1(0)) {
       sfxPlay(SFX_TAP);
       btlMenu = 1;                       // FIGHT
@@ -5512,6 +5675,339 @@ void lanTap(int16_t x, int16_t y) {
   if (y > 370) { lanLeave(); lanOpen = false; }   // back
 }
 
+// ---------- exploring ----------
+// The menu's EXPLORE row opens a map of the island; a place on it opens that
+// place's scene, where hiding spots stir one at a time. Tapping the one that
+// moves spends an outing (pet.expSpend) and meets whoever lives there
+// (pet.rollWild): usually a wild fight, sometimes it takes fright and is gone.
+// A caught creature goes to the POKEDEX BOX (dexbox.h), one per species; a
+// species already there asks which of the two to keep.
+
+bool exploreOpen = false;
+int8_t expPlace = -1;            // -1 = the map, else PL_*
+uint8_t expActive = 0xFF;        // the spot that is stirring
+uint32_t expActiveUntil = 0, expNextAt = 0;
+char expMsg[48] = "";
+uint32_t expMsgUntil = 0;
+bool expKeepAsk = false;         // a catch of a species the box already holds
+PartyMon expCatch;
+
+#define EXP_SPOTS 5
+// On the ground of every scene (the backdrop spans y 30..254 at 2x), far enough
+// apart that a finger cannot be on two at once.
+static const int16_t EXP_SPOT_X[EXP_SPOTS] = { 112, 192, 276, 356, 232 };
+static const int16_t EXP_SPOT_Y[EXP_SPOTS] = { 208, 170, 214, 176, 244 };
+#define EXP_SPOT_R 38              // hit radius: generous, these are for children
+#define EXP_STIR_MS 1900           // how long a spot stirs
+#define EXP_GRACE_MS 350           // ...and how late a tap still counts
+#define EXP_BACK_Y 372             // the BACK button under the scene
+#define EXP_BACK_H 46
+#define EXP_PIN_R 30               // map pin hit radius
+#define EXP_TOP_H 70               // the map's title plate: tap to leave
+
+enum : uint8_t { SPOT_GRASS, SPOT_SAND, SPOT_ROCK, SPOT_WATER, SPOT_SNOW, SPOT_LAVA };
+static uint8_t spotKind(uint8_t pl) {
+  switch (pl) {
+    case PL_MEADOW: case PL_FOREST: return SPOT_GRASS;
+    case PL_BEACH: return SPOT_SAND;
+    case PL_OCEAN: return SPOT_WATER;
+    case PL_SNOW: return SPOT_SNOW;
+    case PL_VOLCANO: return SPOT_LAVA;
+    default: return SPOT_ROCK;     // mountain, cave
+  }
+}
+
+static const StrId PLACE_STR[PLACE_COUNT] = {
+  S_PL_MEADOW, S_PL_BEACH, S_PL_FOREST, S_PL_VOLCANO, S_PL_MOUNTAIN, S_PL_SNOW,
+  S_PL_OCEAN, S_PL_CAVE,
+};
+static_assert(MAP_PIN_COUNT == PLACE_COUNT, "the map needs a pin for every place");
+
+// Someone to fight with: the live creature once hatched, or anyone banked.
+static bool expHasTeam() { return !pet.isEgg() || party.count() > 0; }
+
+static void expSay(const char *fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(expMsg, sizeof(expMsg), fmt, ap);
+  va_end(ap);
+  expMsgUntil = millis() + 2200;
+}
+
+void openExplore() {
+  exploreOpen = true;
+  expPlace = -1;
+  expKeepAsk = false;
+  expMsgUntil = 0;
+}
+
+// One hiding spot. `stir` is how far through its stirring it is (0 = still).
+static void drawSpot(uint8_t kind, int x, int y, bool stir, uint32_t now) {
+  int dx = stir ? (int)(sinf(now * 0.025f) * 4) : 0;
+  switch (kind) {
+    case SPOT_GRASS: {
+      // a tuft of blades; stirring, they sway and a leaf flies off
+      for (int i = -4; i <= 4; i++) {
+        int bx = x + i * 5, top = y - 26 + abs(i) * 3;
+        int sway = stir ? dx * (y - top) / 26 : 0;
+        uint16_t c = (i & 1) ? 0x2C64 : 0x3E86;
+        gfx->fillTriangle(bx - 4, y, bx + 4, y, bx + sway, top, c);
+      }
+      gfx->drawFastHLine(x - 24, y, 49, 0x1A62);
+      if (stir) gfx->fillCircle(x + 16 + (int)((now / 40) % 20), y - 30 - (int)((now / 60) % 12), 3, 0x5F28);
+      break;
+    }
+    case SPOT_SAND:
+      gfx->fillEllipse(x + dx, y - 6, 26, 10, 0xE6B2);
+      gfx->fillEllipse(x + dx - 4, y - 9, 16, 5, 0xF738);
+      gfx->fillTriangle(x + dx + 8, y - 12, x + dx + 18, y - 12, x + dx + 13, y - 20, 0xFB2C);  // a shell
+      if (stir) for (int k = 0; k < 3; k++) gfx->fillCircle(x - 20 + k * 20, y - 18 - (int)((now / 50 + k * 7) % 14), 2, 0xE6B2);
+      break;
+    case SPOT_ROCK:
+      gfx->fillEllipse(x + dx, y - 12, 26, 16, 0x7BCF);
+      gfx->fillEllipse(x + dx - 6, y - 18, 14, 7, 0xA534);
+      gfx->drawEllipse(x + dx, y - 12, 26, 16, 0x3186);
+      if (stir) for (int k = 0; k < 4; k++) gfx->fillCircle(x - 28 + k * 18, y - 2 - (int)((now / 70 + k * 5) % 8), 2, 0xBDD7);
+      break;
+    case SPOT_WATER: {
+      int r = stir ? 26 + (int)((now / 60) % 6) : 24;
+      gfx->drawEllipse(x, y - 4, r, 7, 0xDF7F);
+      gfx->drawEllipse(x, y - 4, r - 10, 4, 0xAEDF);
+      if (stir) for (int k = 0; k < 3; k++)
+        gfx->drawCircle(x - 8 + k * 8, y - 12 - (int)((now / 45 + k * 9) % 22), 2 + k % 2, 0xF7FF);
+      break;
+    }
+    case SPOT_SNOW:
+      gfx->fillEllipse(x + dx, y - 10, 26, 14, 0xFFFF);
+      gfx->fillEllipse(x + dx + 6, y - 6, 18, 6, 0xC6FF);
+      if (stir) for (int k = 0; k < 4; k++) gfx->fillCircle(x - 24 + k * 16, y - 22 - (int)((now / 55 + k * 6) % 16), 2, 0xFFFF);
+      break;
+    default:   // lava
+      gfx->fillEllipse(x, y - 4, 26, 9, 0x4000);
+      gfx->fillEllipse(x, y - 5, 21, 6, stir ? 0xFD20 : 0xE200);
+      if (stir) {
+        int b = (int)((now / 50) % 18);
+        gfx->fillCircle(x - 6, y - 8 - b, 4 - b / 6, 0xFEA0);
+        gfx->fillCircle(x + 9, y - 6 - (b + 9) % 18, 3, 0xFD20);
+      }
+      break;
+  }
+}
+
+static void drawExploreCharges(int cy) {
+  for (int i = 0; i < EXP_MAX; i++) {
+    int cx = CX + (i - (EXP_MAX - 1) / 2) * 30 - ((EXP_MAX % 2) ? 0 : 15);
+    if (i < pet.expCharges()) drawBallIcon(cx, cy, 10);
+    else { gfx->fillCircle(cx, cy, 10, UI_TRACK); gfx->drawCircle(cx, cy, 10, 0x8410); }
+  }
+}
+
+static void drawExploreNext(int y) {
+  char t[32];
+  if (pet.expCharges() >= EXP_MAX) return;
+  uint16_t m = pet.expMinutesToNext();
+  snprintf(t, sizeof(t), T(S_EXP_NEXT_FMT), m / 60, m % 60);
+  gfx->setTextSize(1);
+  gfx->setTextColor(UI_INK);
+  gfx->setCursor(CX - (int)strlen(t) * 3, y);
+  gfx->print(t);
+}
+
+static void renderExploreMap() {
+  gfx->fillScreen(RGB565_BLACK);
+  drawBack(MAP_ART, 0);
+  // the title plate: what this is, and the outings in hand
+  gfx->fillRoundRect(CX - 96, 12, 192, 58, 14, UI_WHITE);
+  gfx->drawRoundRect(CX - 96, 12, 192, 58, 14, UI_INK);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(2);
+  gfx->setCursor(CX - (int)strlen(T(S_EXPLORE)) * 6, 20);
+  gfx->print(T(S_EXPLORE));
+  drawExploreCharges(52);
+  for (uint8_t p = 0; p < PLACE_COUNT; p++) {
+    int x = MAP_PINS[p].x * 2, y = MAP_PINS[p].y * 2;
+    bool open = placeCount(p) > 0;
+    if (open) drawBallIcon(x, y, 11);
+    else { gfx->fillCircle(x, y, 11, UI_TRACK); gfx->drawCircle(x, y, 11, RGB565_BLACK); }
+    const char *nm = T(PLACE_STR[p]);
+    int w = (int)strlen(nm) * 6 + 8;
+    gfx->fillRoundRect(x - w / 2, y + 14, w, 13, 4, open ? UI_INK : 0x8410);
+    gfx->setTextSize(1);
+    gfx->setTextColor(UI_WHITE);
+    gfx->setCursor(x - w / 2 + 4, y + 17);
+    gfx->print(nm);
+  }
+  // the bottom plate: the next outing, a reason, or nothing
+  const char *line = nullptr;
+  if (!expHasTeam()) line = T(S_EXP_NOTEAM);
+  else if (millis() < expMsgUntil) line = expMsg;
+  if (line || pet.expCharges() < EXP_MAX) {
+    gfx->fillRoundRect(CX - 120, 412, 240, 30, 10, UI_WHITE);
+    gfx->drawRoundRect(CX - 120, 412, 240, 30, 10, UI_INK);
+    if (line) {
+      gfx->setTextSize(1);
+      gfx->setTextColor(UI_BAR_BAD);
+      gfx->setCursor(CX - (int)strlen(line) * 3, 423);
+      gfx->print(line);
+    } else drawExploreNext(423);
+  }
+  gfx->flush();
+}
+
+static void renderExploreScene() {
+  uint32_t now = millis();
+  // the spots take turns: one stirs, then a pause, then another
+  if (now >= expNextAt) {
+    uint8_t s;
+    do { s = (uint8_t)random(EXP_SPOTS); } while (s == expActive && EXP_SPOTS > 1);
+    expActive = s;
+    expActiveUntil = now + EXP_STIR_MS;
+    expNextAt = expActiveUntil + 700 + random(1400);
+  }
+  gfx->fillScreen(RGB565_BLACK);
+  drawBack(placeScene((uint8_t)expPlace, sceneIsNight()), 30);
+  gfx->fillRect(0, 254, 466, 212, UI_BG_DAY);
+  uint8_t kind = spotKind((uint8_t)expPlace);
+  for (uint8_t i = 0; i < EXP_SPOTS; i++)
+    drawSpot(kind, EXP_SPOT_X[i], EXP_SPOT_Y[i], i == expActive && now < expActiveUntil, now);
+
+  // the place's name on a plate, top centre
+  const char *nm = T(PLACE_STR[expPlace]);
+  int w = (int)strlen(nm) * 12 + 20;
+  gfx->fillRoundRect(CX - w / 2, 40, w, 28, 8, UI_WHITE);
+  gfx->drawRoundRect(CX - w / 2, 40, w, 28, 8, UI_INK);
+  gfx->setTextSize(2);
+  gfx->setTextColor(UI_INK);
+  gfx->setCursor(CX - (int)strlen(nm) * 6, 47);
+  gfx->print(nm);
+
+  drawExploreCharges(282);
+  const char *line = (now < expMsgUntil) ? expMsg
+                   : (pet.expCharges() ? T(S_EXP_HINT) : T(S_EXP_EMPTY));
+  gfx->setTextSize(2);
+  gfx->setTextColor(now < expMsgUntil ? UI_BAR_BAD : UI_INK);
+  int tw = (int)strlen(line) * 12;
+  if (tw > 380) gfx->setTextSize(1), tw = (int)strlen(line) * 6;
+  gfx->setCursor(CX - tw / 2, 310);
+  gfx->print(line);
+  if (!pet.expCharges()) drawExploreNext(340);
+
+  gfx->fillRoundRect(CX - 90, EXP_BACK_Y, 180, EXP_BACK_H, 12, UI_TRACK);
+  gfx->drawRoundRect(CX - 90, EXP_BACK_Y, 180, EXP_BACK_H, 12, UI_INK);
+  gfx->setTextSize(2);
+  gfx->setTextColor(UI_INK);
+  gfx->setCursor(CX - (int)strlen(T(S_BACK)) * 6, EXP_BACK_Y + 15);
+  gfx->print(T(S_BACK));
+
+  if (expKeepAsk) {
+    char q[40], o[20], n[20];
+    snprintf(q, sizeof(q), T(S_KEEP_Q_FMT), dexName(expCatch.dex));
+    PartyMon old;
+    dexBoxGet(expCatch.dex, old);
+    snprintf(o, sizeof(o), T(S_KEEP_OLD_FMT), (unsigned)old.level);
+    snprintf(n, sizeof(n), T(S_KEEP_NEW_FMT), (unsigned)expCatch.level);
+    drawConfirmPanel(q, nullptr, nullptr, UI_INK, o, UI_TRACK, UI_INK, n, UI_BAR_OK, UI_WHITE);
+  }
+  gfx->flush();
+}
+
+void renderExplore() {
+  if (expPlace < 0) renderExploreMap();
+  else renderExploreScene();
+}
+
+// After a wild fight closes, however it closed: a catch is kept, a draw or a
+// loss is simply over. Runs from render() so no close path can skip it.
+void exploreAfterBattle() {
+  if (!btlWild || battleOpen) return;
+  btlWild = false;
+  if (!btlCaught) return;
+  btlCaught = false;
+  expCatch = btlWildMon;
+  pet.registerCaught(expCatch.dex, expCatch.shiny);
+  if (!dexBoxReady()) {
+    // no storage: the old way, the team then the box, or it cannot be kept
+    if (!party.add(expCatch) && !party.boxAdd(expCatch)) expSay("%s", T(S_GIFT_FULL));
+    return;
+  }
+  if (dexBoxHas(expCatch.dex)) { expKeepAsk = true; return; }
+  dexBoxPut(expCatch);
+  expSay(T(S_STORED_FMT), dexName(expCatch.dex));
+}
+
+static void exploreEncounter() {
+  if (!pet.expCharges()) { sfxPlay(SFX_DENY); expSay("%s", T(S_EXP_EMPTY)); return; }
+  int16_t d = pet.rollWild((uint8_t)expPlace);
+  if (!d) { sfxPlay(SFX_DENY); expSay("%s", T(S_EXP_NOBODY)); return; }
+  pet.expSpend();
+  pet.markSeen(d);
+  pet.saveNow();
+  expActiveUntil = 0;
+  expNextAt = millis() + 1200;
+  if ((int)random(100) < EXP_FLEE_PCT) {
+    cryOr(d, SFX_DENY);
+    expSay(T(S_EXP_FLED_FMT), dexName(d));
+    return;
+  }
+  if (!startWildBattle(d, pet.wildLevel(), (uint8_t)expPlace)) expSay("%s", T(S_EXP_NOTEAM));
+}
+
+void exploreTap(int16_t x, int16_t y) {
+  if (expKeepAsk) {               // modal: nothing behind it answers
+    int c1t, c1b, c2t, c2b;
+    uiConfirmRects(&c1t, &c1b, &c2t, &c2b);
+    if (x < CONFIRM_BTN_X || x > CONFIRM_BTN_X + CONFIRM_BTN_W) return;
+    if (y >= c2t && y <= c2b) {   // the NEW one replaces the old
+      dexBoxPut(expCatch);
+      expKeepAsk = false;
+      sfxPlay(SFX_TAP);
+      expSay(T(S_STORED_FMT), dexName(expCatch.dex));
+    } else if (y >= c1t && y <= c1b) {   // keep the old; the new one goes free
+      expKeepAsk = false;
+      sfxPlay(SFX_TAP);
+    }
+    return;
+  }
+  if (expPlace < 0) {             // the map
+    if (y < EXP_TOP_H && x > CX - 100 && x < CX + 100) { exploreOpen = false; sfxPlay(SFX_TAP); return; }
+    int best = -1, bd = EXP_PIN_R * EXP_PIN_R + 1;
+    for (uint8_t p = 0; p < PLACE_COUNT; p++) {
+      int dx = x - MAP_PINS[p].x * 2, dy = y - (MAP_PINS[p].y * 2 + 8);   // pin + its label
+      int d = dx * dx + dy * dy;
+      if (d < bd) { bd = d; best = p; }
+    }
+    if (best < 0) return;
+    if (!expHasTeam()) { sfxPlay(SFX_DENY); return; }
+    if (!placeCount((uint8_t)best)) { sfxPlay(SFX_DENY); expSay("%s", T(S_EXP_NOBODY)); return; }
+    sfxPlay(SFX_TAP);
+    expPlace = (int8_t)best;
+    expActive = 0xFF;
+    expNextAt = millis() + 600;
+    expMsgUntil = 0;
+    return;
+  }
+  if (y >= EXP_BACK_Y - 4 && y <= EXP_BACK_Y + EXP_BACK_H + 4 && x >= CX - 94 && x <= CX + 94) {
+    expPlace = -1;
+    sfxPlay(SFX_TAP);
+    return;
+  }
+  uint32_t now = millis();
+  for (uint8_t i = 0; i < EXP_SPOTS; i++) {
+    int dx = x - EXP_SPOT_X[i], dy = y - (EXP_SPOT_Y[i] - 12);
+    if (dx * dx + dy * dy > EXP_SPOT_R * EXP_SPOT_R) continue;
+    if (i == expActive && now < expActiveUntil + EXP_GRACE_MS) exploreEncounter();
+    else sfxPlay(SFX_TAP);         // a still spot: nothing there this time
+    return;
+  }
+}
+
+// The test's view of the scene, so it never restates the geometry.
+void exploreSpotAt(uint8_t i, int *x, int *y) {
+  if (i >= EXP_SPOTS) return;
+  if (x) *x = EXP_SPOT_X[i];
+  if (y) *y = EXP_SPOT_Y[i] - 12;
+}
+
 // ---------- gym list ----------
 void renderGyms() {
   gfx->fillScreen(RGB565_BLACK);
@@ -5986,10 +6482,11 @@ void renderCard() {
 // Row labels are built fresh each frame because two of them carry live counts.
 static void menuRowLabel(int i, char *out, size_t n) {
   switch (i) {
-    case 0: snprintf(out, n, "%s", T(S_STATS)); break;
-    case 1: snprintf(out, n, T(S_POKEDEX_FMT), pet.registeredCount(), DEX_COUNT); break;
-    case 2: snprintf(out, n, "%s", T(S_SETTINGS)); break;
-    case 3: snprintf(out, n, "%s", T(S_RETIRE)); break;
+    case MENU_STATS: snprintf(out, n, "%s", T(S_STATS)); break;
+    case MENU_EXPLORE: snprintf(out, n, "%s", T(S_EXPLORE)); break;
+    case MENU_POKEDEX: snprintf(out, n, T(S_POKEDEX_FMT), pet.registeredCount(), DEX_COUNT); break;
+    case MENU_SETTINGS: snprintf(out, n, "%s", T(S_SETTINGS)); break;
+    case MENU_RETIRE: snprintf(out, n, "%s", T(S_RETIRE)); break;
     default: snprintf(out, n, "%s", T(S_CLOSE)); break;
   }
 }
@@ -6006,7 +6503,7 @@ void drawMenu() {
   for (int i = 0; i < MENU_ROWS; i++) {
     int y = MENU_ROW_Y(i);
     bool close = (i == MENU_ROWS - 1);
-    bool dead = (i == 3 && !pet.canRetireNow());   // an egg or a companion
+    bool dead = (i == MENU_RETIRE && !pet.canRetireNow());   // an egg or a companion
     gfx->fillRoundRect(MENU_X + 18, y, MENU_W - 36, MENU_ROW_H, 12,
                        close || dead ? UI_TRACK : UI_BG_DAY);
     gfx->drawRoundRect(MENU_X + 18, y, MENU_W - 36, MENU_ROW_H, 12, UI_INK);
@@ -6366,6 +6863,54 @@ void keyboardTap(int16_t x, int16_t y) {
 
 // ---------- galeria pokedex ----------
 
+// The Pokedex page's one button, which moves a creature between the Pokedex
+// box and the team. ONE answer for what it offers (dexPageAction) and one for
+// doing it (dexPageDo), asked by the draw, the tap and the tests alike.
+#define DEXBTN_Y 344
+#define DEXBTN_H 46
+#define DEXBTN_W 240
+enum : uint8_t { DEXACT_NONE = 0, DEXACT_TO_TEAM, DEXACT_TEAM_FULL, DEXACT_STORE };
+
+// A banked creature of this species, box first so the fighting six are the
+// last to be touched: 1..BOX_SLOTS for the box, -1..-PARTY_SLOTS for the party.
+static int teamMemberOf(int16_t dex) {
+  for (int i = 0; i < BOX_SLOTS; i++) if (party.box[i].dex == dex) return i + 1;
+  for (int i = 0; i < PARTY_SLOTS; i++) if (party.slots[i].dex == dex) return -(i + 1);
+  return 0;
+}
+
+uint8_t dexPageAction(int16_t dex) {
+  if (!pet.isRegistered(dex) || !dexBoxReady()) return DEXACT_NONE;
+  if (dexBoxHas(dex))
+    return (party.firstFree() >= 0 || party.boxFirstFree() >= 0) ? DEXACT_TO_TEAM : DEXACT_TEAM_FULL;
+  return teamMemberOf(dex) ? DEXACT_STORE : DEXACT_NONE;
+}
+
+bool dexPageButtonHit(int16_t x, int16_t y) {
+  return x >= CX - DEXBTN_W / 2 && x <= CX + DEXBTN_W / 2 &&
+         y >= DEXBTN_Y - 4 && y <= DEXBTN_Y + DEXBTN_H + 4;
+}
+
+// Moves it and returns true, or returns false having changed nothing.
+bool dexPageDo(int16_t dex) {
+  uint8_t act = dexPageAction(dex);
+  PartyMon m;
+  if (act == DEXACT_TO_TEAM) {
+    if (!dexBoxGet(dex, m)) return false;
+    if (!party.add(m) && !party.boxAdd(m)) return false;
+    dexBoxTake(dex);
+    return true;
+  }
+  if (act == DEXACT_STORE) {
+    int at = teamMemberOf(dex);
+    m = at > 0 ? party.box[at - 1] : party.slots[-at - 1];
+    if (!dexBoxPut(m)) return false;       // stored FIRST: never in neither place
+    if (at > 0) party.boxReleaseAt(at - 1); else party.releaseAt(-at - 1);
+    return true;
+  }
+  return false;
+}
+
 #define GAL_X 73
 #define GAL_Y 84
 
@@ -6407,6 +6952,30 @@ void renderGallery() {
     } else {
       const uint8_t *t = thumbs.get(galleryDetail);
       if (t) drawThumb(t, CX - GAL_CELL, 135, 4, !reg);
+    }
+    // The Pokedex box: this species' creature, or a place to put one.
+    uint8_t act = dexPageAction(galleryDetail);
+    if (act != DEXACT_NONE) {
+      if (act == DEXACT_TO_TEAM || act == DEXACT_TEAM_FULL) {
+        PartyMon m;
+        dexBoxGet(galleryDetail, m);
+        char l[32];
+        snprintf(l, sizeof(l), T(S_DEXBOX_FMT), (unsigned)m.level);
+        gfx->setTextColor(UI_INK);
+        gfx->setTextSize(1);
+        gfx->setCursor(CX - (int)strlen(l) * 3, DEXBTN_Y - 16);
+        gfx->print(l);
+      }
+      bool live = (act != DEXACT_TEAM_FULL);
+      const char *lbl = act == DEXACT_STORE ? T(S_TO_DEX)
+                      : (live ? T(S_TO_TEAM) : T(S_PARTY_FULL));
+      gfx->fillRoundRect(CX - DEXBTN_W / 2, DEXBTN_Y, DEXBTN_W, DEXBTN_H, 12, live ? UI_BAR_OK : UI_TRACK);
+      gfx->drawRoundRect(CX - DEXBTN_W / 2, DEXBTN_Y, DEXBTN_W, DEXBTN_H, 12, UI_INK);
+      gfx->setTextColor(live ? UI_WHITE : 0x8410);
+      int ts = strlen(lbl) * 12 > DEXBTN_W - 16 ? 1 : 2;
+      gfx->setTextSize(ts);
+      gfx->setCursor(CX - (int)strlen(lbl) * 3 * ts, DEXBTN_Y + DEXBTN_H / 2 - 4 * ts);
+      gfx->print(lbl);
     }
     gfx->setTextColor(UI_INK);
     gfx->setTextSize(2);
@@ -6469,6 +7038,11 @@ void renderGallery() {
 }
 
 void galleryTap(int16_t x, int16_t y) {
+  if (galleryDetail && dexPageButtonHit(x, y)) {
+    if (!dexPageDo(galleryDetail)) sfxPlay(SFX_DENY);
+    else sfxPlay(SFX_TAP);
+    return;
+  }
   if (galleryDetail) {  // volver a la rejilla
     galleryDetail = 0;
     galleryPmd.unload();

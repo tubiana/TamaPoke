@@ -72,6 +72,46 @@ static_assert(STK_COUNT <= 32, "stickers are one bit each in a uint32_t");
 // so it grows up alongside rather than starting from nothing.
 #define GIFT_MIN_LEVEL 5
 
+// Exploring. Up to EXP_MAX outings banked; one comes back every
+// EXP_CHARGE_UNITS, where an awake minute is worth 1 and an asleep one
+// EXP_SLEEP_RATE -- so a full bar takes 10 h awake, or 2 h of sleep. The board
+// switched off counts like the creature's own state at the time, through the
+// same syncClock() catch-up as everything else.
+#define EXP_MAX 3
+#define EXP_CHARGE_UNITS 200
+#define EXP_SLEEP_RATE 5
+// Tapping a hiding spot that moves: most of the time something comes out,
+// sometimes it takes fright and is gone (seen, not met).
+#define EXP_FLEE_PCT 10
+// A species the player has never seen is this many times as likely to turn up,
+// so the Pokedex keeps moving instead of re-rolling the same common ones.
+#define WILD_UNSEEN_MULT 3
+// One in this many wild creatures is shiny.
+#define WILD_SHINY_ONE_IN 100
+
+// The places to explore. The first six ARE dex.h's biomes, in the same order,
+// so a species' biome is directly where it lives; the last two are cut across
+// the biomes by type. APPEND-ONLY, like everything numbered that may be saved.
+enum : uint8_t {
+  PL_MEADOW = 0, PL_BEACH, PL_FOREST, PL_VOLCANO, PL_MOUNTAIN, PL_SNOW,
+  PL_OCEAN, PL_CAVE, PLACE_COUNT
+};
+// Does `d` live in `place`? THE single answer: the wild roll, the place's head
+// count on the map and the tests all ask this.
+bool placeHas(uint8_t place, int16_t d);
+// Can `d` be met in the wild at all right now: never a legendary, and only what
+// an egg could be -- an installed region and a sprite to draw it with.
+bool wildCandidate(int16_t d);
+uint16_t placeCount(uint8_t place);   // how many could turn up there now
+// Percent chance a ball holds, from the species' rarity and how hurt it is.
+// Kid mode makes it easier. 1..95: never certain, never hopeless.
+uint8_t catchChancePct(int16_t dex, uint16_t hp, uint16_t maxHp, bool kid);
+// Builds a whole creature of `dex` at `lvl` -- IVs, level-gated moves, the same
+// stat formula as anything that hatches -- through a scratch Pet that was never
+// begin()'d and so cannot save. The birthday present and every wild creature
+// are made here, so the two cannot disagree about what a creature is.
+bool makeMon(int16_t dex, uint16_t lvl, bool shiny, PartyMon &out);
+
 // ceremonias de fin de ciclo
 enum : uint8_t { CER_NONE = 0, CER_FAREWELL, CER_RUNAWAY, CER_RELEASE };
 
@@ -190,6 +230,26 @@ public:
   // The birthday present: waiting all day, once a year, until it is opened.
   bool giftReady() const;
   int16_t openGift();           // the species given, or 0 if party and box are full
+
+  // Exploring (see EXP_*). Player-wide: the bar outlives the creature.
+  uint8_t expCharges() const { return expN; }
+  bool expSpend();                      // false when the bar is empty
+  uint16_t expMinutesToNext() const;    // awake minutes until the next one, 0 when full
+  void expGain(uint32_t units);
+  // The wild creature for one outing to `place`, 0 if nobody lives there now.
+  int16_t rollWild(uint8_t place) const;
+  // Its level: around whoever would fight it, so a meeting is a fair one.
+  uint8_t wildLevel() const;
+  // Seen: met in the wild, caught or not. Registered implies seen.
+  uint8_t dexSeen[(DEX_COUNT + 7) / 8] = { 0 };
+  bool isSeen(int16_t dex) const {
+    return isRegistered(dex) ||
+           (dex >= 1 && dex <= DEX_COUNT && (dexSeen[(dex - 1) >> 3] & (1 << ((dex - 1) & 7))));
+  }
+  void markSeen(int16_t dex);
+  // A creature caught in the wild joins the Pokedex like a hatched one would.
+  void registerCaught(int16_t dex, bool isShiny);
+  uint16_t seenCount() const;
 
   uint32_t stickers = 0;        // bit n = sticker n (STK_*)
   bool hasSticker(uint8_t s) const { return s < STK_COUNT && (stickers >> s) & 1; }
@@ -532,6 +592,8 @@ private:
   uint32_t stickerUntil = 0;
   uint8_t quizUsed = 0;
   uint8_t quizToday = 0;   // right answers on quizDay
+  uint8_t expN = EXP_MAX;  // outings banked; a new save starts with a full bar
+  uint16_t expAcc = 0;     // units toward the next one
   // drainPct as a rate, not a rounding: each minute adds drainPct and the needs
   // drop on the minutes it crosses 100. At 100 that is every minute, exactly as
   // before -- same drops, same random() calls -- so nothing changes by default.

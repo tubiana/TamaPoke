@@ -62,6 +62,20 @@ public:
     fillRect(x, y, 1, h, c); fillRect(x + w - 1, y, 1, h, c);
   }
 
+  // Arduino_GFX has both, with these signatures: centre, then the two radii.
+  void fillEllipse(int x0, int y0, int rx, int ry, uint16_t c) {
+    if (rx <= 0 || ry <= 0) return;
+    for (int y = -ry; y <= ry; y++)
+      for (int x = -rx; x <= rx; x++)
+        if ((long)x * x * ry * ry + (long)y * y * rx * rx <= (long)rx * rx * ry * ry) px(x0 + x, y0 + y, c);
+  }
+  void drawEllipse(int x0, int y0, int rx, int ry, uint16_t c) {
+    if (rx <= 0 || ry <= 0) return;
+    for (int a = 0; a < 360; a += 2) {
+      float t = a * 3.14159265f / 180.0f;
+      px(x0 + (int)lroundf(rx * cosf(t)), y0 + (int)lroundf(ry * sinf(t)), c);
+    }
+  }
   void fillCircle(int x0, int y0, int r, uint16_t c) {
     if (r < 0) return;
     for (int y = -r; y <= r; y++)

@@ -866,6 +866,170 @@ def arena_dragon():
     return s
 
 
+# =====================================================================
+# the explore map
+# =====================================================================
+
+MAP_N = 233          # drawn at 2x it fills the 466 panel; the bezel crops the corners
+# Where each place sits on the island, in map pixels, in the firmware's PL_*
+# order. Written to MAP.json beside the PNG and packed into backs.h by
+# gen_backs.py, so the pins are never restated by hand: a replacement map
+# brings its own pins.
+MAP_PINS = [
+    ('meadow',   112, 128),
+    ('beach',     84, 186),
+    ('forest',    64, 102),
+    ('volcano',  166, 166),
+    ('mountain', 150,  80),
+    ('snow',     118,  50),
+    ('ocean',     28, 146),
+    ('cave',     186, 120),
+]
+
+
+def explore_map():
+    """An island seen from above, drawn like an RPG world map: flat ground
+    seen from overhead, with the landmarks -- peaks, trees, the volcano --
+    standing up as little side-on icons so a child reads them at a glance."""
+    N = MAP_N
+    im = Image.new('RGB', (N, N))
+    px = im.load()
+    cx, cy = 116, 118
+    sea = [(20, 70, 150), (28, 96, 180), (44, 124, 204), (70, 156, 224)]
+    sand = ramp(42, 0.5, 4, 0.55, 0.82)
+    grass = ramp(100, 0.5, 5, 0.32, 0.62)
+    wood = ramp(130, 0.5, 5, 0.12, 0.44)
+    rockr = ramp(28, 0.16, 5, 0.22, 0.7)
+    snow = [(170, 196, 224), (214, 230, 246), (250, 252, 255)]
+    lava = [(150, 30, 20), (220, 80, 30), (255, 150, 40), (255, 220, 120)]
+    burnt = ramp(12, 0.24, 5, 0.12, 0.4)
+    ink = (30, 26, 34)
+
+    def coast(x, y):
+        a = math.atan2(y - cy, x - cx)
+        r = 86 + 12 * (fbm(math.cos(a) * 1.4 + 3, math.sin(a) * 1.4 + 3, 201, 3) - 0.5) * 2
+        r += 8 * math.sin(a * 3 + 1)
+        return math.hypot(x - cx, (y - cy) * 1.05) - r     # < 0 on land
+
+    # ground: sea, surf, beach, grass
+    for y in range(N):
+        for x in range(N):
+            c = coast(x, y)
+            if c > 0:
+                deep = min(1.0, c / 40)
+                t = 0.85 - deep * 0.75 + (fbm(x * 0.08, y * 0.3, 203) - 0.5) * 0.25
+                col = pick(sea, t, x, y)
+                if c < 3:
+                    col = (220, 240, 255)
+                elif (y + int(fbm(x * 0.05, y * 0.05, 204) * 20)) % 9 == 0 and _h(x // 6, y, 205) > 0.6:
+                    col = sea[-1]
+                px[x, y] = col
+            elif c > -7:
+                px[x, y] = pick(sand, 0.6 + (fbm(x * .2, y * .2, 206) - .5) * .5, x, y)
+            else:
+                n = fbm(x * 0.12, y * 0.12, 207)
+                px[x, y] = pick(grass, 0.5 + (n - 0.5) * 0.6, x, y)
+                if _h(x, y, 209) > 0.988:
+                    px[x, y] = [(250, 240, 120), (250, 250, 250), (250, 150, 180)][(x + y) % 3]
+
+    def put(x, y, c):
+        if 0 <= x < N and 0 <= y < N:
+            px[x, y] = c
+
+    # paths linking the places, drawn before the landmarks so they pass behind
+    for pts in ([(84, 186), (100, 160), (112, 128), (128, 104), (146, 88)],
+                [(112, 128), (88, 114), (66, 104)],
+                [(112, 128), (138, 142), (156, 158)],
+                [(128, 104), (160, 112), (178, 116)]):
+        for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+            steps = int(math.hypot(x1 - x0, y1 - y0))
+            for i in range(steps):
+                if i % 5 < 3:
+                    x = int(x0 + (x1 - x0) * i / steps); y = int(y0 + (y1 - y0) * i / steps)
+                    put(x, y, (222, 196, 140)); put(x + 1, y, (196, 166, 112))
+
+    def tree(x, y, s):
+        """A round crown on a trunk, lit from the upper left."""
+        for yy in range(-s - 1, 2):
+            for xx in range(-s - 1, s + 2):
+                d = math.hypot(xx, yy + s * 0.4) / s
+                if d < 1:
+                    lit = 0.75 - (xx + yy) * 0.06 - d * 0.35
+                    put(x + xx, y + yy - s // 2, pick(wood, lit, x + xx, y + yy))
+                elif d < 1.18:
+                    put(x + xx, y + yy - s // 2, wood[0])
+        put(x, y + 1, (90, 60, 40)); put(x, y + 2, (90, 60, 40))
+
+    def peak(x, y, w, h, capped):
+        """A mountain icon: base at (x, y), lit face on the left, a snow cap."""
+        for yy in range(h):
+            half = w * (yy + 1) / h
+            for xx in range(-int(half), int(half) + 1):
+                lit = xx < 0
+                t = (0.75 if lit else 0.35) + (fbm((x + xx) * .2, (y - h + yy) * .2, 211) - .5) * .3
+                col = pick(rockr, t, x + xx, y - h + yy)
+                if capped and yy < h * 0.42 - abs(math.sin(xx * 0.9)) * 2:
+                    col = snow[2] if lit else snow[0]
+                put(x + xx, y - h + yy, col)
+            put(x - int(half) - 1, y - h + yy, ink)
+            put(x + int(half) + 1, y - h + yy, ink)
+        for xx in range(-w, w + 1):
+            put(x + xx, y, ink)
+
+    # forest: a rounded wood of trees to the west, back rows first
+    rnd = random.Random(212)
+    trees = []
+    for _ in range(140):
+        x, y = rnd.uniform(36, 92), rnd.uniform(70, 136)
+        if math.hypot((x - 64) / 30, (y - 104) / 34) + (fbm(x * .1, y * .1, 213) - .5) * .5 < 1 and coast(x, y) < -8:
+            trees.append((int(x), int(y), rnd.choice((4, 5, 5, 6))))
+    for x, y, s in sorted(trees, key=lambda t: t[1]):
+        tree(x, y, s)
+
+    # mountains to the north; the tallest wears the snow
+    for x, y, w, h, cap in sorted([(150, 92, 20, 26, False), (172, 98, 14, 18, False),
+                                   (132, 84, 16, 22, False), (118, 68, 22, 34, True),
+                                   (98, 74, 13, 18, False), (142, 70, 12, 16, True)],
+                                  key=lambda m: m[1]):
+        peak(x, y, w, h, cap)
+
+    # the cave: a rocky knoll with a dark mouth, east of the mountains
+    peak(186, 124, 15, 16, False)
+    for yy in range(-7, 1):
+        for xx in range(-5, 6):
+            if math.hypot(xx / 5, (yy + 1) / 7) < 1:
+                put(186 + xx, 123 + yy, (16, 12, 16))
+
+    # the volcano: a burnt cone, a glowing crater, lava down its flanks
+    vx, vy, vw, vh = 166, 182, 26, 30
+    for yy in range(vh):
+        k = (yy + 1) / vh
+        half = 5 + (vw - 5) * k ** 1.3
+        for xx in range(-int(half), int(half) + 1):
+            t = (0.7 if xx < 0 else 0.3) + (fbm((vx + xx) * .2, (vy + yy) * .2, 214) - .5) * .4
+            col = pick(burnt, t, vx + xx, vy - vh + yy)
+            if abs(xx - math.sin(yy * 0.4) * 3) < 1.2 and yy < vh * 0.8:
+                col = lava[2]
+            put(vx + xx, vy - vh + yy, col)
+        put(vx - int(half) - 1, vy - vh + yy, ink); put(vx + int(half) + 1, vy - vh + yy, ink)
+    for xx in range(-5, 6):
+        put(vx + xx, vy - vh, lava[3] if abs(xx) < 3 else lava[1])
+        put(vx + xx, vy - vh - 1, lava[2] if abs(xx) < 4 else ink)
+    for i in range(5):                     # smoke, puffs swelling as they rise
+        sx, sy, r = vx + 3 + i * 4, vy - vh - 6 - i * 5, 2.2 + i * 0.7
+        for yy in range(-4, 5):
+            for xx in range(-5, 6):
+                if math.hypot(xx, yy) < r:
+                    put(sx + xx, sy + yy, (170, 162, 170) if yy < 0 else (124, 114, 126))
+
+    # meadow tufts, a few dark blades so the open grass is not empty
+    for _ in range(60):
+        x, y = rnd.randrange(80, 150), rnd.randrange(110, 175)
+        if coast(x, y) < -10 and px[x, y] in grass:
+            put(x, y, grass[0]); put(x + 2, y, grass[0]); put(x + 1, y - 1, grass[1])
+    return im
+
+
 # name -> builder. Day/night pairs for the biomes; arenas are indoors, one each.
 SCENES = {
     'OCEAN': lambda: ocean()[0],
@@ -880,6 +1044,7 @@ SCENES = {
     'ARENA GHOST': arena_ghost,
     'ARENA ICE': arena_ice,
     'ARENA DRAGON': arena_dragon,
+    'MAP': explore_map,
 }
 
 
@@ -897,12 +1062,17 @@ def main():
         if os.path.exists(path) and not a.force:
             print('keep   %s (exists; --force to redraw)' % name)
             continue
-        im = SCENES[name]().image()
+        built = SCENES[name]()
+        im = built if isinstance(built, Image.Image) else built.image()
         n = len(im.getcolors(1 << 16))
         if n > 256:   # gen_backs.py packs 8bpp; never hand it an image it refuses
             im = im.quantize(255, dither=Image.Dither.NONE).convert('RGB')
         im.save(path)
         print('draw   %s (%d colours)' % (name, min(n, 255)))
+        if name == 'MAP':       # its pins travel with it
+            import json
+            with open(os.path.join(a.out, 'MAP.json'), 'w') as f:
+                json.dump({'size': MAP_N, 'pins': [[n_, x, y] for n_, x, y in MAP_PINS]}, f, indent=1)
 
 
 if __name__ == '__main__':
