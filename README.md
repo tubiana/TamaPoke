@@ -495,6 +495,11 @@ above). `pack_pmd.py` also takes individual dex numbers, e.g. `pack_pmd.py 7 25`
 
 ## How to play
 
+**A printable manual for kids** (7-10, with screenshots and where to tap) is in
+[`manual/`](manual/): [English](manual/TamaPoke-manual-EN.pdf) and
+[French](manual/TamaPoke-manuel-FR.pdf). `bash tools/manual/build.sh` rebuilds
+both from the real firmware, so re-run it after a UI change.
+
 On first run you **choose a starter** (Bulbasaur / Charmander / Squirtle). After
 that you start with an **egg**. Tap it 3 times or wait and it hatches. From then
 on, care for your companion:
