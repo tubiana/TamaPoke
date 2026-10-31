@@ -471,12 +471,24 @@ uint8_t Pet::quizLeft() const {
 
 void Pet::quizAnswered(bool right) {
   uint32_t d = today();
-  if (d != quizDay) { quizDay = d; quizUsed = 0; }
-  if (quizUsed < QUIZ_PER_DAY) quizUsed++;
+  if (d != quizDay) { quizDay = d; quizUsed = 0; quizToday = 0; }
+  quizGain = 0;
+  if (quizUsed >= QUIZ_PER_DAY) return;     // today's are spent: nothing more to earn
+  quizUsed++;
   if (right && !isEgg() && ceremony == CER_NONE) joy = clamp100(joy + QUIZ_JOY);
   if (right && quizRight < 0xFFFF) quizRight++;
+  if (right) quizToday++;
+  // the last question of the day pays out its stars, once
+  if (quizUsed == QUIZ_PER_DAY) quizGain = rewardTraining(quizStars() * QUIZ_STAR_TRAIN, quizGainWhich);
   checkStickers();
   save();
+}
+
+uint8_t Pet::quizRightToday() const { return today() == quizDay ? quizToday : 0; }
+
+uint8_t Pet::quizStars() const {
+  uint8_t r = quizRightToday();
+  return r >= QUIZ_PER_DAY ? 3 : r >= 8 ? 2 : r >= 5 ? 1 : 0;
 }
 
 // La calma forja la defensa: cada hora de bienestar (descansando, o despierto
@@ -1472,6 +1484,7 @@ void Pet::save() {
   prefs.putUInt("qday", quizDay);
   prefs.putUChar("qn", quizUsed);
   prefs.putUShort("qok", quizRight);
+  prefs.putUChar("qtr", quizToday);
   prefs.putUChar("bdm", bdayMonth);
   prefs.putUChar("bdd", bdayDay);
   prefs.putUShort("gyr", giftYear);
@@ -1548,6 +1561,7 @@ void Pet::load() {
   quizDay = prefs.getUInt("qday", 0);
   quizUsed = prefs.getUChar("qn", 0);
   quizRight = prefs.getUShort("qok", 0);
+  quizToday = prefs.getUChar("qtr", 0);
   bdayMonth = prefs.getUChar("bdm", 0);
   bdayDay = prefs.getUChar("bdd", 0);
   if (bdayMonth > 12 || bdayDay > 31) bdayMonth = bdayDay = 0;

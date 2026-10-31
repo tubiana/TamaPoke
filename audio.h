@@ -41,8 +41,9 @@ void audioBegin();          // init ES8311 + I2S + amplificador + tarea de audio
 // A species' cry, streamed from /cries/cNNN.raw on the SD card (pack_cries.py).
 // Silent when the card has no cries pack -- they are optional, like every pack.
 // Defined in sdmon.cpp on the board, since it reads the card, and in the
-// emulator's host_impl.cpp.
-void cryPlay(int16_t dex);
+// emulator's host_impl.cpp. True when a cry was queued, so a caller whose
+// cue stands in for the cry plays it only when there was none (cryOr()).
+bool cryPlay(int16_t dex);
 // Plays signed 8-bit mono PCM at the I2S rate and TAKES OWNERSHIP of `pcm`
 // (heap or PSRAM): the audio task frees it once played, or at once if refused.
 // Queued in order with the effects, so a jingle and then a cry play in turn.

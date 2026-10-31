@@ -172,20 +172,22 @@ bool sdBegin() {
 // past it is not a cry this tool wrote, and is refused rather than allocated.
 #define CRY_MAX_BYTES 40000
 
-void cryPlay(int16_t dex) {
-  if (!sdReady || !audioEnabled() || dex < 1 || dex > DEX_COUNT) return;
+bool cryPlay(int16_t dex) {
+  if (!sdReady || !audioEnabled() || dex < 1 || dex > DEX_COUNT) return false;
   char path[24];
   snprintf(path, sizeof(path), "/cries/c%03u.raw", (unsigned)dex);
   // exists() first: open() on a missing file logs an error, and a card with no
   // cries pack would print one for every hatch, swap and caress
-  if (!SD_MMC.exists(path)) return;
+  if (!SD_MMC.exists(path)) return false;
   File f = SD_MMC.open(path);
-  if (!f) return;
+  if (!f) return false;
   size_t n = f.size();
   int8_t *pcm = (n && n <= CRY_MAX_BYTES) ? (int8_t *)ps_malloc(n) : nullptr;
   if (pcm && f.read((uint8_t *)pcm, n) != n) { free(pcm); pcm = nullptr; }
   f.close();
-  if (pcm) audioPlayPcm(pcm, (uint32_t)n);   // the audio task frees it
+  if (!pcm) return false;
+  audioPlayPcm(pcm, (uint32_t)n);   // the audio task frees it
+  return true;
 }
 
 bool SdMon::load(int16_t dexNum, bool shiny) {

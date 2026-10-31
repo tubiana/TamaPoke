@@ -132,13 +132,21 @@ bool pwrShortPressed() { return false; }
 
 // --- audio (silent) ---
 void audioBegin() {}
-void sfxPlay(uint8_t) {}
+// Effects are counted too, so a test can tell one sound from two.
+int g_emuSfx = 0;
+uint8_t g_emuLastSfx = 0xFF;
+void sfxPlay(uint8_t id) { g_emuSfx++; g_emuLastSfx = id; }
 // Cries are silent here too, but COUNTED, so a test can see which ones the
 // sketch asked for -- that decision is the part worth testing; the playback is
 // a buffer handed to I2S.
 int g_emuCries = 0;
 int16_t g_emuLastCry = 0;
-void cryPlay(int16_t dex) { g_emuCries++; g_emuLastCry = dex; }
+bool g_emuHasCries = true;   // false = a card with no cries pack
+bool cryPlay(int16_t dex) {
+  if (!g_emuHasCries) return false;
+  g_emuCries++; g_emuLastCry = dex;
+  return true;
+}
 void audioPlayPcm(int8_t *pcm, uint32_t) { free(pcm); }
 // no radio here; the protocol itself is exercised by tests/link_test.cpp
 struct Link;

@@ -153,6 +153,9 @@ enum StrId : uint8_t {
   S_GIFT_TAP,       // status line while the present waits
   S_GIFT_FULL,      // ...and when party and box have no room for it
   S_HAPPY_BDAY,     // status line on the birthday once it is opened
+  S_SET_DATE,       // SETTINGS: the date page's title
+  S_DAY, S_MONTH, S_YEAR,   // ...and its three column labels
+  S_QUIZ_TODAY_FMT, // "Today: %u/%u", the quiz's day score above its stars
   STR_COUNT
 };
 

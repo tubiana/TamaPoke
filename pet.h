@@ -49,6 +49,10 @@ enum : uint8_t { SLEEP_NONE = 0, SLEEP_AUTO, SLEEP_PLAYER };
 // live creature up a little.
 #define QUIZ_PER_DAY 10
 #define QUIZ_JOY 5
+// Finishing the day's questions scores stars -- 1 at 5 right, 2 at 8, 3 for all
+// ten -- and each star trains the live creature this much (rewardTraining(),
+// so only a stat with headroom, never past its IV ceiling).
+#define QUIZ_STAR_TRAIN 2
 
 // Stickers: a collection on the player card, kept forever. The first ten are
 // the calendar events in EV_* order (sticker = ev - 1), earned by having the
@@ -172,6 +176,11 @@ public:
   uint8_t quizLeft() const;
   void quizAnswered(bool right);
   uint16_t quizRight = 0;       // right answers, all time (stickers)
+  uint8_t quizRightToday() const;
+  uint8_t quizStars() const;    // 0..3, from today's right answers
+  // What the day's stars trained, set by the answer that finished the day and
+  // cleared by the next answer. Not saved: it is for the screen that follows.
+  uint8_t quizGain = 0, quizGainWhich = 0;
 
   // The calendar (calendar.h). The birthday is the player's, set in OPTIONS;
   // 0 = not set. Today's event is EV_NONE without a clock.
@@ -522,6 +531,7 @@ private:
   uint16_t giftYear = 0;   // the last year a birthday present was opened
   uint32_t stickerUntil = 0;
   uint8_t quizUsed = 0;
+  uint8_t quizToday = 0;   // right answers on quizDay
   // drainPct as a rate, not a rounding: each minute adds drainPct and the needs
   // drop on the minutes it crosses 100. At 100 that is every minute, exactly as
   // before -- same drops, same random() calls -- so nothing changes by default.

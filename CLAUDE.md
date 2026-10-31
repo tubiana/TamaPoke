@@ -17,6 +17,7 @@ Personal, non-commercial fan project. Code MIT; sprites CC BY-NC (PMD SpriteColl
 | `calendar.h` | Dates from the RTC, the calendar events and their egg types; pure, so `calendar_test` sweeps whole years |
 | `i18n.cpp/.h` | 6-language string table (ES/EN/FR/DE/IT/PT) |
 | `audio.cpp/.h` | ES8311 codec over I2S |
+| `audio_mix.h` | How loud each kind of sound is, and the music stepper -- shared with `loud_test`, which measures the balance |
 | `rtcbat.cpp/.h` | PCF85063 RTC + AXP2101 battery/PMU/PWR button |
 | `sdmon.cpp/.h` | SD sprite streaming + USB `PUT` file transfer |
 | `pin_config.h` | Board pinout — from the official Waveshare repo, don't invent values |
@@ -977,7 +978,10 @@ caught by `sleep_test` the same minute the window was narrowed.
 
 A board whose RTC was never set reads months out and so never auto-sleeps. That
 fails in the safe direction -- it keeps draining and the light button still
-works -- and the clock is settable from SETTINGS or `RTCSET`.
+works -- and the clock is settable from SETTINGS (time on page 1, DATE on
+page 2; one OK applies both) or `RTCSET`. The date page exists because the
+calendar events and the birthday were unreachable on a board whose RTC had
+only ever been seeded: SETTINGS used to set the hour and keep the day.
 
 The runaway deliberately does **not** ask for confirmation -- a pet you have to
 authorise to leave is not at stake. A confirmation was added when this was first

@@ -61,6 +61,17 @@ static inline CalDate calFromDays(uint32_t days) {
   return c;
 }
 
+// A civil date to days since 1970-01-01, the inverse of calFromDays (same
+// algorithm). Used when the date is set by hand in SETTINGS.
+static inline uint32_t calToDays(uint16_t year, uint8_t month, uint8_t day) {
+  int32_t y = (int32_t)year - (month <= 2);
+  int32_t era = y / 400;
+  uint32_t yoe = (uint32_t)(y - era * 400);
+  uint32_t doy = (153 * (month > 2 ? month - 3 : month + 9) + 2) / 5 + day - 1;
+  uint32_t doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+  return (uint32_t)(era * 146097 + (int32_t)doe - 719468);
+}
+
 static inline uint8_t calMonthDays(uint8_t m, uint16_t y) {
   static const uint8_t D[12] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
   if (m < 1 || m > 12) return 31;

@@ -64,15 +64,15 @@ int main(){
   // drawn over it, so answer it first -- as flush_test and swipe_test do.
   while (pet.hasLearnOffer()) pet.declineLearn();
 
-  // ---- OPTIONS, the second page of SETTINGS ----
+  // ---- OPTIONS, the third page of SETTINGS (after the clock and the date) ----
   openClock();
   ck(clockOpen && settingsPage == 0, "SETTINGS opens on the clock page");
-  onSwipe(-1);
-  ck(clockOpen && settingsPage == 1, "a swipe left turns to OPTIONS and stays in SETTINGS");
+  onSwipe(-1); onSwipe(-1);
+  ck(clockOpen && settingsPage == 2, "two swipes left turn to OPTIONS and stay in SETTINGS");
   onSwipe(+1);
-  ck(clockOpen && settingsPage == 0, "...and right turns back");
+  ck(clockOpen && settingsPage == 1, "...and right turns back");
   onTap(233, 22);
-  ck(settingsPage == 1, "tapping the page dots turns the page too");
+  ck(settingsPage == 2, "tapping the page dots turns the page too");
 
   audioSetVolume(9);
   bool was = pet.kidMode;
@@ -89,7 +89,7 @@ int main(){
   settingsPage = 0;
   for (int i=0;i<6;i++) onTap(276 + 24, 296 + 15);    // VOL_PLUS_X + half, LANG_PILL_Y + half
   ck(audioVolume() == 5, "kid mode: + stops at 5");
-  settingsPage = 1;
+  settingsPage = 2;
   onTap(KID_PILL_X, KID_PILL_Y);
   ck(!pet.kidMode, "the switch turns it off again");
   settingsPage = 0;
