@@ -19,6 +19,7 @@ extern Pet pet;
 extern bool cardOpen, galleryOpen, clockOpen, kbOpen, menuOpen, partyOpen, partyPick;
 extern bool trainOpen, movePickOpen, battleOpen, gymOpen, playerOpen, boxOpen, pickOpen;
 extern uint8_t cardPage, gymPage, playerPage, movePickPage, boxPage, pickPage, partyDetail;
+extern uint8_t settingsPage;
 extern int galleryPage; extern bool galleryDirty; extern uint8_t galleryDetail;
 extern uint8_t galleryRegion;
 extern uint8_t gymRegion;
@@ -71,6 +72,7 @@ int main(){
   clearAll(); cardOpen=true;                      check("card",     &cardOpen,     &cardPage);
   clearAll(); gymOpen=true; gymPick=false;        check("gyms",     &gymOpen,      &gymPage);
   clearAll(); playerOpen=true;                    check("player",   &playerOpen,   &playerPage);
+  clearAll(); clockOpen=true;                     check("settings", &clockOpen,    &settingsPage);
   clearAll(); partyOpen=true; boxOpen=true;       check("box",      &boxOpen,      &boxPage);
   clearAll(); movePickOpen=true; movePickParty=0; movePickSlot=0;
                                                   check("movepick", &movePickOpen, &movePickPage);

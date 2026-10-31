@@ -6,12 +6,20 @@
 #include "audio.h"
 #include "i18n.h"
 #include "dex_names.h"
+#include "move_names.h"
 
 const char *dexName(int16_t dex) {
   if (dex < 1 || dex > DEX_COUNT) return DEX_TBL[0].name;
   const char *const *row = DEX_NAMES[gLang < LANG_COUNT ? gLang : LANG_DEFAULT];
   if (row && row[dex]) return row[dex];
   return DEX_TBL[dex].name;
+}
+
+const char *moveName(uint8_t idx) {
+  if (idx >= MOVE_COUNT) return MOVE_TBL[0].name;
+  const char *const *row = MOVE_NAMES[gLang < LANG_COUNT ? gLang : LANG_DEFAULT];
+  if (row && row[idx]) return row[idx];
+  return MOVE_TBL[idx].name;
 }
 
 // Reads a blob that may be LONGER than the array we are reading it into.
@@ -125,14 +133,17 @@ void Pet::syncClock(uint32_t nowEpoch) {
   }
   if (mins > 14UL * 24 * 60) mins = 14UL * 24 * 60;  // tope: 2 semanas
 
+  const uint8_t offFloor = needFloor(15);
   for (uint32_t i = 0; i < mins; i++) {
     ageMinutes++;
     if (isEgg()) {
       if (ageMinutes >= 3) hatch();  // eclosiona en tu ausencia
       continue;
     }
+    bool due = drainDue();   // the needs speed applies switched off too
     if (sleeping) {  // descanso: baja lento y con suelo, igual que en vivo
       energy = clamp100(energy + 6);
+      if (!due) continue;
       if (ageMinutes % 2 == 0) {
         fullness = dropTo(fullness, 1, 30);
         joy = dropTo(joy, 1, 35);
@@ -140,10 +151,11 @@ void Pet::syncClock(uint32_t nowEpoch) {
       if (ageMinutes % 3 == 0) hygiene = dropTo(hygiene, 1, 45);
       continue;
     }
-    fullness = dropTo(fullness, 2, 15);
-    energy = dropTo(energy, 1, 15);
-    hygiene = dropTo(hygiene, 1, 15);
-    joy = dropTo(joy, 1, 15);
+    if (!due) continue;
+    fullness = dropTo(fullness, 2, offFloor);
+    energy = dropTo(energy, 1, offFloor);
+    hygiene = dropTo(hygiene, 1, offFloor);
+    joy = dropTo(joy, 1, offFloor);
   }
   if (!isEgg()) {
     if (!sleeping) {  // durmiendo no ensucia
@@ -184,6 +196,7 @@ void Pet::tick() {
   }
 
   applyAutoSleep();   // put down at 21:00 still goes to bed at 22:00
+  const bool due = drainDue();   // OPTIONS > needs speed; every minute at 100%
 
 
   // el sueño es descanso: la energia se recupera y las necesidades bajan MUCHO
@@ -193,11 +206,11 @@ void Pet::tick() {
   if (sleeping) {
     energy = clamp100(energy + 6);
     if (weight > 0 && ageMinutes % 3 == 0) weight--;
-    if (ageMinutes % 2 == 0) {                 // ~4x mas lento que despierto
+    if (due && ageMinutes % 2 == 0) {          // ~4x mas lento que despierto
       fullness = dropTo(fullness, 1, 30);
       joy = dropTo(joy, 1, 35);
     }
-    if (ageMinutes % 3 == 0) hygiene = dropTo(hygiene, 1, 45);
+    if (due && ageMinutes % 3 == 0) hygiene = dropTo(hygiene, 1, 45);
     defTick(true);  // descansar tambien es bienestar: cuenta para la DEF
     checkMedals();  // aun puede cruzar un nivel por edad mientras duerme
     if (++ticksSinceSave >= 5) pendingSave = true;
@@ -206,21 +219,28 @@ void Pet::tick() {
 
   if (ageMinutes % MINUTES_PER_LEVEL == 0) sfxPlay(SFX_LEVEL);  // subio de nivel (despierto)
 
-  fullness = clamp100(fullness - 2);
-  energy = clamp100(energy - 1);
-  if (fullness > 40 && poops < 3 && random(100) < 15) poops++;
+  // Awake the needs drop to zero, or to KID_FLOOR in kid mode. dropTo() with a
+  // floor of 0 is exactly the clamp100(x - n) this used to be.
+  const uint8_t fl = needFloor(0);
+  if (due) {
+    fullness = dropTo(fullness, 2, fl);
+    energy = dropTo(energy, 1, fl);
+    if (fullness > 40 && poops < 3 && random(100) < 15) poops++;
 
-  hygiene = clamp100(hygiene - 1 - 4 * poops);
-  // el sobrepeso da pereza: la energia cae el doble
-  if (weight > 50) energy = clamp100(energy - 1);
+    hygiene = dropTo(hygiene, (uint8_t)(1 + 4 * poops), fl);
+    // el sobrepeso da pereza: la energia cae el doble
+    if (weight > 50) energy = dropTo(energy, 1, fl);
+  }
   if (weight > 0 && ageMinutes % 3 == 0) weight--;
 
   defTick(false);  // la calma forja la defensa
 
-  int dJoy = -1;
-  if (fullness < 30) dJoy -= 2;
-  if (hygiene < 30) dJoy -= 2;
-  joy = clamp100(joy + dJoy);
+  if (due) {
+    int dJoy = -1;
+    if (fullness < 30) dJoy -= 2;
+    if (hygiene < 30) dJoy -= 2;
+    joy = dropTo(joy, (uint8_t)(-dJoy), fl);
+  }
 
   // Descuido: dejar una estadistica por los suelos cuenta como error de
   // cuidado (con enfriamiento para no contar el mismo descuido cada minuto)
@@ -326,6 +346,39 @@ void Pet::saveNow() { save(); }
 
 void Pet::flushSave() {
   if (pendingSave) save();
+}
+
+bool Pet::drainDue() {
+  drainAcc = (uint8_t)(drainAcc + drainPct);
+  if (drainAcc < 100) return false;
+  drainAcc -= 100;
+  return true;
+}
+
+void Pet::setKidMode(bool on) {
+  kidMode = on;
+  save();
+}
+
+void Pet::setDrainPct(int pct) {
+  if (pct < DRAIN_MIN) pct = DRAIN_MIN;
+  if (pct > 100) pct = 100;
+  pct = (pct / DRAIN_STEP) * DRAIN_STEP;
+  drainPct = (uint8_t)pct;
+  save();
+}
+
+uint8_t Pet::quizLeft() const {
+  if (today() != quizDay) return QUIZ_PER_DAY;   // a new day, a full allowance
+  return quizUsed >= QUIZ_PER_DAY ? 0 : (uint8_t)(QUIZ_PER_DAY - quizUsed);
+}
+
+void Pet::quizAnswered(bool right) {
+  uint32_t d = today();
+  if (d != quizDay) { quizDay = d; quizUsed = 0; }
+  if (quizUsed < QUIZ_PER_DAY) quizUsed++;
+  if (right && !isEgg() && ceremony == CER_NONE) joy = clamp100(joy + QUIZ_JOY);
+  save();
 }
 
 // La calma forja la defensa: cada hora de bienestar (descansando, o despierto
@@ -875,6 +928,7 @@ bool Pet::canFarewellNow() const {
 // boton (final triste); cuidarla un solo tick la salva (neglectTicks se resetea)
 bool Pet::canRunawayNow() const {
   if (frozen) return false;
+  if (kidMode) return false;    // belt and braces: KID_FLOOR already keeps it from neglect
   // inTotalNeglect() as well as the counter, and NOT just the counter. The
   // sleeping branch of tick() returns before the neglect block, so neglectTicks
   // is frozen rather than cleared for the whole night: a creature that went to
@@ -1304,6 +1358,10 @@ void Pet::save() {
   prefs.putUShort("strk", streak);
   prefs.putUShort("bstrk", bestStreak);
   prefs.putUInt("cday", lastCareDay);
+  prefs.putBool("kid", kidMode);
+  prefs.putUChar("drn", drainPct);
+  prefs.putUInt("qday", quizDay);
+  prefs.putUChar("qn", quizUsed);
   prefs.putUChar("bond", bond);
   prefs.putUShort("medal", medals);
   prefs.putUShort("tmedal", totalMedals);
@@ -1370,6 +1428,11 @@ void Pet::load() {
   streak = prefs.getUShort("strk", 0);
   bestStreak = prefs.getUShort("bstrk", 0);
   lastCareDay = prefs.getUInt("cday", 0);
+  kidMode = prefs.getBool("kid", false);
+  drainPct = prefs.getUChar("drn", 100);
+  if (drainPct < DRAIN_MIN || drainPct > 100 || drainPct % DRAIN_STEP) drainPct = 100;
+  quizDay = prefs.getUInt("qday", 0);
+  quizUsed = prefs.getUChar("qn", 0);
   bond = prefs.getUChar("bond", 0);
   medals = prefs.getUShort("medal", 0);
   totalMedals = prefs.getUShort("tmedal", 0);

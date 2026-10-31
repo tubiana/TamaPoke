@@ -3,7 +3,7 @@
 [![Flash in browser](https://img.shields.io/badge/flash-in%20browser-FF6B00?logo=googlechrome&logoColor=white)](https://dylanpdao.github.io/TamaPoke/web/)
 [![MakerWorld](https://img.shields.io/badge/MakerWorld-3D%20case-00AE42?logo=bambulab&logoColor=white)](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)
 ![Board](https://img.shields.io/badge/board-ESP32--S3%20round%20AMOLED-E7352C?logo=espressif&logoColor=white)
-![Firmware](https://img.shields.io/badge/firmware-v3.13-8A2BE2)
+![Firmware](https://img.shields.io/badge/firmware-v3.14-8A2BE2)
 ![Code](https://img.shields.io/badge/code-MIT-blue)
 ![Languages](https://img.shields.io/badge/languages-6-FFCB05)
 [![Stars](https://img.shields.io/github/stars/DylanPDao/TamaPoke?style=flat&logo=github&color=yellow)](https://github.com/DylanPDao/TamaPoke/stargazers)
@@ -139,6 +139,15 @@ While **awake**, per minute:
 - ~**15 %/min** chance to poop (only if FOOD > 40). Poops tank hygiene fast.
 - **Care slip-up** = letting any stat hit **≤ 10** (60-min cooldown so it counts once).
   Each slip-up **delays evolution by 1 level** and cools the bond by 1.
+- **Needs speed** (SETTINGS, swipe left to OPTIONS): **25 / 50 / 75 / 100 %**,
+  default 100. It scales every drain on this page -- awake, asleep and while
+  switched off: at 50 % the needs fall on every other minute. Ageing and
+  levelling are untouched.
+- **Kid mode** (same page): an awake creature's needs **never drop below 20**,
+  switched off included. So it never reaches a slip-up (≤ 10) or total neglect,
+  and **can never run away**. Evolving still needs every stat ≥ 40, so caring
+  for it still matters. The volume is **capped at 5** while it is on. Works
+  with any needs speed.
 
 ### Actions
 - 🍎 **Berry** (3 flavors): +25 FOOD. Each species has a **hidden favorite flavor**
@@ -152,6 +161,9 @@ While **awake**, per minute:
 - 🥊 **Training bag:** trains **STRENGTH** (~4 hits = 1 pt, cap +18/session), tires it.
 - 🫧 **Bath:** clears poops, HYG → 100.
 - 👆 **Pet it:** +5 JOY + bond.
+- ❓ **Quiz** (the button on the Pokédex region chooser): a silhouette and its
+  cry, three names. **10 a day**, reset at midnight by the RTC; a right answer
+  gives the live creature **+5 JOY**.
 - 🌙 **Sleep:** rest — ENE **+6/min**, needs drain ~**4× slower** with floors
   (FOOD 30 / JOY 35 / HYG 45). No poops, no slip-ups, can't run away while asleep.
   **Screen off + between midnight and 06:00 puts it to sleep**, and it stays
@@ -632,15 +644,18 @@ a farewell and punished by a runaway. Legendaries only with 25+ registered.
 
 **Languages:** the UI ships in 6 languages — English (default), Spanish, French,
 German, Italian, Portuguese — switchable from the settings screen (swipe down).
-Species names follow it too (SALAMECHE in French, GLUMANDA in German), from
-PokeAPI via `tools/gen_dex_names.py`, accents folded since the font has none.
+Species and move names follow it too (SALAMECHE and LANCE-FLAMME in French),
+from PokeAPI via `tools/gen_dex_names.py` and `tools/gen_move_names.py`, accents
+folded since the font has none. Move names keep to 12 letters to fit their
+buttons, using an older game's shorter official name where one exists.
 Portuguese, Spanish and Italian keep the English names, as their games do.
 
 **Cries (optional):** with the cries pack on the card, a creature cries when it
 hatches, when an evolution is revealed, when it leaves (farewell, running away,
 release) and when it steps into a fight. A caress makes it cry only sometimes --
 one in six, and never twice within a minute -- because this is a toy a child
-holds. Nothing cries while the screen is off. Build the pack with
+holds. Nothing cries while the screen is off. A new device starts at
+**volume 3** of 10. Build the pack with
 `python tools/pack_cries.py` (needs `pip install soundfile numpy`) and send it from
 the installer's 🔊 button; see CREDITS.md for why it is not committed.
 

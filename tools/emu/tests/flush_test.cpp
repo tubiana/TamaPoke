@@ -26,6 +26,9 @@ extern uint8_t cardPage;
 extern uint8_t partyDetail, boxDetail;
 extern bool boxOpen, releaseConfirm;
 extern Party party;
+extern uint8_t settingsPage;
+extern bool quizOpen;
+void openQuiz();
 void startBattle(int16_t dex, uint8_t lvl);
 
 static int bad = 0;
@@ -34,6 +37,7 @@ static void clearAll(){
   trainOpen=movePickOpen=battleOpen=gymOpen=playerOpen=false;
   boxOpen=releaseConfirm=false;
   partyDetail=boxDetail=0;
+  settingsPage=0; quizOpen=false;
 }
 static void check(const char *name){
   gfx->frameReady = false;
@@ -69,6 +73,8 @@ int main(){
   clearAll(); menuOpen=true;     check("menu");
   clearAll(); partyOpen=true;    check("party");
   clearAll(); clockOpen=true;    check("clock");
+  clearAll(); clockOpen=true; settingsPage=1; check("options");
+  clearAll(); galleryOpen=true; openQuiz();   check("quiz");
   for (uint8_t p=0;p<4;p++){ clearAll(); cardOpen=true; cardPage=p;
     char n[16]; snprintf(n,sizeof(n),"card%u",p); check(n); }
   clearAll(); startBattle(9,50); check("battle");
@@ -93,6 +99,7 @@ int main(){
   clearAll(); playerOpen=true;      crumbIs("player");
   clearAll(); movePickOpen=true;    crumbIs("movepick");
   clearAll(); clockOpen=true;       crumbIs("clock");
+  clearAll(); galleryOpen=true; openQuiz(); crumbIs("quiz");
   clearAll(); cardOpen=true;        crumbIs("card");
   clearAll(); startBattle(9,50);    crumbIs("battle");
   clearAll();

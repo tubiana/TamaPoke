@@ -34,6 +34,20 @@
 #define NIGHT_END 6
 enum : uint8_t { SLEEP_NONE = 0, SLEEP_AUTO, SLEEP_PLAYER };
 #define DEF_TRAIN_TICKS 60                 // minutos de bienestar por +1 de DEF
+// Kid mode: while it is on, an awake creature's needs stop at KID_FLOOR instead
+// of zero. That is the whole rule, and the rest follows from the existing ones:
+// lowestStat() never reaches the care-mistake line (10) or total neglect (0),
+// so no mistakes pile up and it can never run away. Evolving still asks for
+// every need >= 40, so caring for it still matters.
+#define KID_FLOOR 20
+// How fast the needs drop, in percent of the normal rate: a player-wide setting
+// in OPTIONS, available with or without kid mode. Steps of DRAIN_STEP.
+#define DRAIN_MIN 25
+#define DRAIN_STEP 25
+// The quiz: a few a day, then come back tomorrow. A right answer cheers the
+// live creature up a little.
+#define QUIZ_PER_DAY 10
+#define QUIZ_JOY 5
 
 // ceremonias de fin de ciclo
 enum : uint8_t { CER_NONE = 0, CER_FAREWELL, CER_RUNAWAY, CER_RELEASE };
@@ -42,6 +56,9 @@ enum : uint8_t { CER_NONE = 0, CER_FAREWELL, CER_RUNAWAY, CER_RELEASE };
 // PLAYER reads goes through here; DEX_TBL[].name stays the canonical English
 // one for the serial console, the LAN wire and the tests. Out of range is "?".
 const char *dexName(int16_t dex);
+// ...and a move's, by MOVE_TBL index. Same rule: MOVE_TBL[].name is the
+// canonical English, this is what a player reads. Out of range is "-".
+const char *moveName(uint8_t idx);
 
 enum PetMood : uint8_t { MOOD_HAPPY, MOOD_SAD, MOOD_EATING, MOOD_SLEEPING };
 
@@ -126,6 +143,15 @@ public:
   // racha de cuidado diario (del jugador: persiste entre crianzas)
   uint16_t streak = 0, bestStreak = 0;
   uint32_t lastCareDay = 0;
+  // Player-wide settings in OPTIONS. They outlive every creature, like the
+  // badges, so newEgg() must never reset them.
+  bool kidMode = false;
+  uint8_t drainPct = 100;       // DRAIN_MIN..100, how fast the needs drop
+  void setKidMode(bool on);
+  void setDrainPct(int pct);    // clamped and snapped to DRAIN_STEP
+  // The quiz's daily allowance, counted per RTC day (today()).
+  uint8_t quizLeft() const;
+  void quizAnswered(bool right);
   // vinculo (del bicho: sube lento con cuidado, se resetea al nacer otro)
   uint8_t bond = 0;
   char nick[12] = "";    // apodo (vacio = nombre de especie)
@@ -456,6 +482,14 @@ private:
   bool retirePending = false;   // an early retire is under way; newEgg() spends it
   uint8_t neglectTicks = 0;
   uint16_t goodTicks = 0;  // racha bien cuidado: forja la DEF
+  uint32_t quizDay = 0;    // the day quizUsed counts for
+  uint8_t quizUsed = 0;
+  // drainPct as a rate, not a rounding: each minute adds drainPct and the needs
+  // drop on the minutes it crosses 100. At 100 that is every minute, exactly as
+  // before -- same drops, same random() calls -- so nothing changes by default.
+  uint8_t drainAcc = 0;
+  bool drainDue();
+  uint8_t needFloor(uint8_t normal) const { return kidMode && normal < KID_FLOOR ? KID_FLOOR : normal; }
   uint32_t ceremonyUntil = 0;
   uint8_t bondToday = 0;       // tope diario de subida de vinculo
   uint32_t medalUntil = 0;     // celebracion de medalla en pantalla

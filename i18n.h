@@ -130,6 +130,22 @@ enum StrId : uint8_t {
   S_RELEASE_GONE,   // ...and the warning under it: this one does not come back
   S_BOX_TAKE,       // box detail sheet: move this creature into the party
   S_RETIRE_GONE,    // retire confirm: an early retire is not banked either
+  // OPTIONS, the second page of SETTINGS
+  S_OPTIONS,        // its title
+  S_KID_MODE,       // the kid mode switch
+  S_KID_HINT,       // ...and what it does, in one line
+  S_NEEDS_SPEED,    // how fast the needs drop
+  S_NEEDS_HINT,     // ...said plainly
+  S_ON, S_OFF,      // a switch's two states
+  // the quiz, reached from the Pokedex chooser
+  S_QUIZ,           // the button
+  S_QUIZ_Q,         // "WHO'S THAT POKEMON?"
+  S_QUIZ_RIGHT,     // a right answer
+  S_QUIZ_WRONG,     // "IT WAS %s!" -- the answer, after a wrong one
+  S_QUIZ_LEFT,      // "%u LEFT TODAY"
+  S_QUIZ_DONE,      // the daily allowance is spent
+  S_QUIZ_NEXT,      // after an answer: tap for the next one
+  S_QUIZ_HEAR,      // tap the silhouette to hear the cry again
   STR_COUNT
 };
 
