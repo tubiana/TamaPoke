@@ -38,6 +38,11 @@ enum : uint8_t { SLEEP_NONE = 0, SLEEP_AUTO, SLEEP_PLAYER };
 // ceremonias de fin de ciclo
 enum : uint8_t { CER_NONE = 0, CER_FAREWELL, CER_RUNAWAY, CER_RELEASE };
 
+// A species' name in the active UI language (SALAMECHE in French). Every name a
+// PLAYER reads goes through here; DEX_TBL[].name stays the canonical English
+// one for the serial console, the LAN wire and the tests. Out of range is "?".
+const char *dexName(int16_t dex);
+
 enum PetMood : uint8_t { MOOD_HAPPY, MOOD_SAD, MOOD_EATING, MOOD_SLEEPING };
 
 // medallas del individuo (bitmask)

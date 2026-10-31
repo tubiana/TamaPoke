@@ -4,6 +4,15 @@
 #include "moves.h"
 #include "noart.h"   // speciesHasArt(): the egg pool skips what cannot be drawn
 #include "audio.h"
+#include "i18n.h"
+#include "dex_names.h"
+
+const char *dexName(int16_t dex) {
+  if (dex < 1 || dex > DEX_COUNT) return DEX_TBL[0].name;
+  const char *const *row = DEX_NAMES[gLang < LANG_COUNT ? gLang : LANG_DEFAULT];
+  if (row && row[dex]) return row[dex];
+  return DEX_TBL[dex].name;
+}
 
 // Reads a blob that may be LONGER than the array we are reading it into.
 //
