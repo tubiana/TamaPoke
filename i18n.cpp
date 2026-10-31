@@ -46,7 +46,8 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "Has ganado!", "Has perdido...",
     "%s saca a %s", "Adelante, %s!", "GIMNASIOS", "MEDALLAS %u/8", "ENTRENADOR", "VELOCIDAD +%u", "toca: cambiar avatar", "%u en total", "NORMAL", "DIFICIL",
  "ELEGIDOS %u/%u", "LUCHAR", "BLOQUEADO", "POKEMON", "%s derrotado!", "MEDALLA NUEVA!", "VOL %u", "CAJA %u/%u", "cambiar con %s: elige hueco", "CAJA", "TRAER", "solo con un huevo", "COMBATE LAN", "CREAR", "UNIRSE", "buscando...", "listo!", "version distinta", "crear o unirse", "rival: %u mons", "el rival se fue", "esperando al rival...", "OTRA VEZ", "HUIR", "de que region viene el huevo", "%s +%u", "ya no puede entrenar mas", "ELIGE TU REGION", "RETIRAR", "Retirarla ya?", "la siguiente evoluciona un dia mas tarde", "evoluciona un dia mas tarde",   "FALTA PACK", "SOLTAR", "se va para siempre", "AL EQUIPO", "no se unira a tu equipo",
-    "OPCIONES", "MODO NINO", "nunca se escapa, volumen max 5", "NECESIDADES", "lo rapido que bajan", "SI", "NO", "ADIVINA", "QUIEN ES ESTE POKEMON?", "CORRECTO!", "ERA %s!", "QUEDAN %u HOY", "VUELVE MANANA!", "toca: siguiente", "toca la sombra: oirlo", },
+    "OPCIONES", "MODO NINO", "nunca se escapa, volumen max 5", "NECESIDADES", "lo rapido que bajan", "SI", "NO", "ADIVINA", "QUIEN ES ESTE POKEMON?", "CORRECTO!", "ERA %s!", "QUEDAN %u HOY", "VUELVE MANANA!", "toca: siguiente", "toca la sombra: oirlo",
+    "PEGATINAS", "PEGATINA!", "CUMPLEANOS", "Un regalo! Tocalo!", "No hay sitio", "Feliz cumpleanos!", },
   // ---------------- EN ----------------
   {
     "Evolving!", "Yum yum!", "It likes it!", "It's hungry!", "Needs a bath!",
@@ -87,7 +88,8 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "%s sends out %s", "Go, %s!", "GYMS", "BADGES %u/8", "TRAINER",
  "SPEED +%u", "tap: change avatar", "%u earned in all", "EASY", "HARD", "CHOSEN %u/%u", "FIGHT", "LOCKED", "POKEMON", "%s defeated!", "NEW BADGE!", "VOL %u", "BOX %u/%u", "swap with %s: pick a slot", "BOX", "BRING BACK", "only while an egg waits", "LAN BATTLE", "HOST", "JOIN", "searching...", "ready!", "different version", "host or join", "rival: %u mons", "the rival left", "waiting for the rival...", "AGAIN", "RUN", "where this egg comes from", "%s +%u", "trained as far as it can go", "CHOOSE A REGION", "RETIRE", "Retire it early?", "the next one evolves a day later", "evolves a day later",
    "NEEDS PACK", "RELEASE", "gone for good", "TO PARTY", "it will not join your party",
-    "OPTIONS", "KID MODE", "never runs away, volume max 5", "NEEDS SPEED", "how fast its needs drop", "ON", "OFF", "QUIZ", "WHO'S THAT POKEMON?", "RIGHT!", "IT WAS %s!", "%u LEFT TODAY", "COME BACK TOMORROW!", "tap: next", "tap the shadow to hear it", },
+    "OPTIONS", "KID MODE", "never runs away, volume max 5", "NEEDS SPEED", "how fast its needs drop", "ON", "OFF", "QUIZ", "WHO'S THAT POKEMON?", "RIGHT!", "IT WAS %s!", "%u LEFT TODAY", "COME BACK TOMORROW!", "tap: next", "tap the shadow to hear it",
+    "STICKERS", "NEW STICKER!", "BIRTHDAY", "A present! Tap it!", "No room for it", "Happy birthday!", },
   // ---------------- FR ----------------
   {
     "Il evolue!", "Miam miam!", "Il aime ca!", "Il a faim!", "Besoin d'un bain!",
@@ -127,7 +129,8 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "Gagne!", "Perdu...",
     "%s envoie %s", "Vas-y, %s!", "ARENES", "BADGES %u/8", "DRESSEUR", "VITESSE +%u", "touche: changer d'avatar", "%u au total", "NORMAL", "DIFFICILE", "CHOISIS %u/%u", "COMBATTRE", "VERROUILLE", "POKEMON", "%s vaincu!", "NOUVEAU BADGE!", "VOL %u", "BOITE %u/%u", "echanger avec %s: choisis", "BOITE", "RAMENER", "seulement avec un oeuf", "COMBAT LAN", "CREER", "REJOINDRE", "recherche...", "pret!", "version differente", "creer ou rejoindre", "rival: %u mons", "le rival est parti", "en attente du rival...", "ENCORE", "FUIR", "d ou vient cet oeuf", "%s +%u", "ne peut plus progresser", "CHOISIS TA REGION", "RETIRER", "Retirer maintenant?", "le suivant evolue un jour plus tard", "evolue un jour plus tard",
    "PACK REQUIS", "RELACHER", "parti pour de bon", "A L EQUIPE", "ne rejoindra pas l equipe",
-    "OPTIONS", "MODE ENFANT", "ne fuit jamais, volume max 5", "BESOINS", "vitesse de la faim et cie", "OUI", "NON", "QUIZ", "QUEL EST CE POKEMON?", "BRAVO!", "REPONSE: %s", "ENCORE %u AUJOURD HUI", "REVIENS DEMAIN!", "touche: suivant", "touche l ombre: l entendre", },
+    "OPTIONS", "MODE ENFANT", "ne fuit jamais, volume max 5", "BESOINS", "vitesse de la faim et cie", "OUI", "NON", "QUIZ", "QUEL EST CE POKEMON?", "BRAVO!", "REPONSE: %s", "ENCORE %u AUJOURD HUI", "REVIENS DEMAIN!", "touche: suivant", "touche l ombre: l entendre",
+    "AUTOCOLLANTS", "AUTOCOLLANT!", "ANNIVERSAIRE", "Un cadeau! Touche-le!", "Plus de place", "Joyeux anniversaire!", },
   // ---------------- DE ----------------
   {
     "Entwickelt sich!", "Mampf mampf!", "Gefaellt ihm!", "Hat Hunger!", "Braucht ein Bad!",
@@ -167,7 +170,8 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "Gewonnen!", "Verloren...",
     "%s schickt %s", "Los, %s!", "ARENEN", "ORDEN %u/8", "TRAINER", "TEMPO +%u", "tippen: Avatar wechseln", "%u insgesamt", "NORMAL", "SCHWER", "GEWAEHLT %u/%u", "KAEMPFEN", "GESPERRT", "POKEMON", "%s besiegt!", "NEUER ORDEN!", "LAUT %u", "BOX %u/%u", "mit %s tauschen: waehle", "BOX", "ZURUECK", "nur mit einem Ei", "LAN KAMPF", "HOSTEN", "BEITRETEN", "suche...", "bereit!", "andere Version", "hosten oder beitreten", "Gegner: %u", "der Gegner ist weg", "warte auf den Gegner...", "NOCHMAL", "FLUCHT", "woher dieses Ei kommt", "%s +%u", "kann nicht weiter trainieren", "WAEHLE DEINE REGION", "VERABSCHIEDEN", "Jetzt verabschieden?", "das naechste entwickelt sich einen Tag spaeter", "entwickelt sich einen Tag spaeter",
    "PACK FEHLT", "FREILASSEN", "fuer immer weg", "INS TEAM", "kommt nicht ins team",
-    "OPTIONEN", "KINDERMODUS", "haut nie ab, Lautstaerke max 5", "BEDARF", "wie schnell Hunger und Co. sinken", "AN", "AUS", "QUIZ", "WER IST DAS POKEMON?", "RICHTIG!", "ES WAR %s!", "NOCH %u HEUTE", "KOMM MORGEN WIEDER!", "tippen: weiter", "Schatten tippen: anhoeren", },
+    "OPTIONEN", "KINDERMODUS", "haut nie ab, Lautstaerke max 5", "BEDARF", "wie schnell Hunger und Co. sinken", "AN", "AUS", "QUIZ", "WER IST DAS POKEMON?", "RICHTIG!", "ES WAR %s!", "NOCH %u HEUTE", "KOMM MORGEN WIEDER!", "tippen: weiter", "Schatten tippen: anhoeren",
+    "STICKER", "NEUER STICKER!", "GEBURTSTAG", "Ein Geschenk! Tippen!", "Kein Platz frei", "Alles Gute!", },
   // ---------------- IT ----------------
   {
     "Si evolve!", "Gnam gnam!", "Gli piace!", "Ha fame!", "Vuole un bagno!",
@@ -207,7 +211,8 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "Hai vinto!", "Hai perso...",
     "%s manda %s", "Vai, %s!", "PALESTRE", "MEDAGLIE %u/8", "ALLENATORE", "VELOCITA +%u", "tocca: cambia avatar", "%u in totale", "NORMALE", "DIFFICILE", "SCELTI %u/%u", "LOTTA", "BLOCCATO", "POKEMON", "%s sconfitto!", "NUOVA MEDAGLIA!", "VOL %u", "BOX %u/%u", "scambia con %s: scegli", "BOX", "RIPORTA", "solo con un uovo", "LOTTA LAN", "CREA", "ENTRA", "ricerca...", "pronto!", "versione diversa", "crea o entra", "rivale: %u mons", "il rivale se n' e andato", "in attesa del rivale...", "ANCORA", "FUGGI", "da quale regione viene l uovo", "%s +%u", "non puo allenarsi oltre", "SCEGLI LA REGIONE", "RITIRARE", "Ritirarla adesso?", "il prossimo evolve un giorno dopo", "evolve un giorno dopo",
    "MANCA PACK", "LIBERA", "via per sempre", "AL GRUPPO", "non entrera nel gruppo",
-    "OPZIONI", "MODO BIMBI", "non scappa mai, volume max 5", "BISOGNI", "quanto calano fame e co.", "SI", "NO", "QUIZ", "CHI E QUESTO POKEMON?", "GIUSTO!", "ERA %s!", "ANCORA %u OGGI", "TORNA DOMANI!", "tocca: avanti", "tocca l ombra: ascoltalo", },
+    "OPZIONI", "MODO BIMBI", "non scappa mai, volume max 5", "BISOGNI", "quanto calano fame e co.", "SI", "NO", "QUIZ", "CHI E QUESTO POKEMON?", "GIUSTO!", "ERA %s!", "ANCORA %u OGGI", "TORNA DOMANI!", "tocca: avanti", "tocca l ombra: ascoltalo",
+    "ADESIVI", "ADESIVO!", "COMPLEANNO", "Un regalo! Toccalo!", "Nessun posto", "Buon compleanno!", },
   // ---------------- PT ----------------
   {
     "Evoluindo!", "Nham nham!", "Ele gosta!", "Esta com fome!", "Precisa de banho!",
@@ -247,7 +252,8 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "Ganhaste!", "Perdeste...",
     "%s envia %s", "Vai, %s!", "GINASIOS", "MEDALHAS %u/8", "TREINADOR", "VELOCIDADE +%u", "toca: mudar avatar", "%u no total", "NORMAL", "DIFICIL", "ESCOLHIDOS %u/%u", "LUTAR", "BLOQUEADO", "POKEMON", "%s derrotado!", "NOVA MEDALHA!", "VOL %u", "CAIXA %u/%u", "trocar com %s: escolhe", "CAIXA", "TRAZER", "so com um ovo", "COMBATE LAN", "CRIAR", "ENTRAR", "a procurar...", "pronto!", "versao diferente", "criar ou entrar", "rival: %u mons", "o rival saiu", "a esperar pelo rival...", "OUTRA VEZ", "FUGIR", "de que regiao vem o ovo", "%s +%u", "ja nao pode treinar mais", "ESCOLHE A REGIAO", "REFORMAR", "Reformar agora?", "o proximo evolui um dia depois", "evolui um dia depois",
    "FALTA PACK", "SOLTAR", "vai para sempre", "A EQUIPA", "nao entrara na equipa",
-    "OPCOES", "MODO CRIANCA", "nunca foge, volume max 5", "NECESSIDADES", "quao rapido descem", "SIM", "NAO", "QUIZ", "QUEM E ESTE POKEMON?", "CERTO!", "ERA %s!", "FALTAM %u HOJE", "VOLTA AMANHA!", "toca: seguinte", "toca na sombra: ouvir", },
+    "OPCOES", "MODO CRIANCA", "nunca foge, volume max 5", "NECESSIDADES", "quao rapido descem", "SIM", "NAO", "QUIZ", "QUEM E ESTE POKEMON?", "CERTO!", "ERA %s!", "FALTAM %u HOJE", "VOLTA AMANHA!", "toca: seguinte", "toca na sombra: ouvir",
+    "AUTOCOLANTES", "AUTOCOLANTE!", "ANIVERSARIO", "Um presente! Toca!", "Sem espaco", "Parabens!", },
 };
 
 // Nombres de medalla en sus tres longitudes [idioma][medalla].
@@ -283,7 +289,19 @@ static const char *const MED_DSC[LANG_COUNT][MED_COUNT] = {
 };
 
 const char *T(StrId id) { return STRINGS[gLang][id]; }
+// Sticker names, in STK_* order, at most 9 characters each: they sit
+// under the sticker on the player card.
+static const char *const STK_NAME[LANG_COUNT][STK_COUNT] = {
+  { "ANO NUEVO", "VALENTIN", "DIA POKE", "PRIMAVERA", "VERANO", "OTONO", "HALLOWEEN", "INVIERNO", "NAVIDAD", "CUMPLE", "DEX 10", "DEX 50", "DEX 100", "DEX 200", "QUIZ 10", "QUIZ 50", "SHINY" },
+  { "NEW YEAR", "VALENTINE", "POKE DAY", "SPRING", "SUMMER", "AUTUMN", "HALLOWEEN", "WINTER", "CHRISTMAS", "BIRTHDAY", "DEX 10", "DEX 50", "DEX 100", "DEX 200", "QUIZ 10", "QUIZ 50", "SHINY" },
+  { "NOUVEL AN", "ST-VALENT", "JOUR POKE", "PRINTEMPS", "ETE", "AUTOMNE", "HALLOWEEN", "HIVER", "NOEL", "ANNIV", "DEX 10", "DEX 50", "DEX 100", "DEX 200", "QUIZ 10", "QUIZ 50", "CHROMA" },
+  { "NEUJAHR", "VALENTIN", "POKE-TAG", "FRUEHLING", "SOMMER", "HERBST", "HALLOWEEN", "WINTER", "WEIHNACHT", "GEB.-TAG", "DEX 10", "DEX 50", "DEX 100", "DEX 200", "QUIZ 10", "QUIZ 50", "SHINY" },
+  { "CAPODANNO", "S.VALENT.", "POKE DAY", "PRIMAVERA", "ESTATE", "AUTUNNO", "HALLOWEEN", "INVERNO", "NATALE", "AUGURI", "DEX 10", "DEX 50", "DEX 100", "DEX 200", "QUIZ 10", "QUIZ 50", "SHINY" },
+  { "ANO NOVO", "NAMORADOS", "DIA POKE", "PRIMAVERA", "VERAO", "OUTONO", "HALLOWEEN", "INVERNO", "NATAL", "ANIVERS.", "DEX 10", "DEX 50", "DEX 100", "DEX 200", "QUIZ 10", "QUIZ 50", "SHINY" },
+};
+
 const char *medalName(int i)  { return MED_NAME[gLang][i]; }
+const char *stickerName(int i) { return (i >= 0 && i < STK_COUNT) ? STK_NAME[gLang][i] : ""; }
 const char *medalLabel(int i) { return MED_LBL[gLang][i]; }
 const char *medalDesc(int i)  { return MED_DSC[gLang][i]; }
 

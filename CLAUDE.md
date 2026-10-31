@@ -14,6 +14,7 @@ Personal, non-commercial fan project. Code MIT; sprites CC BY-NC (PMD SpriteColl
 | `dex_names.h` / `move_names.h` | GENERATED (`tools/gen_dex_names.py`, `gen_move_names.py`): species names per UI language. Read ONLY through `dexName()` / `moveName()`; the tables' own `.name` is the canonical English for the console, the LAN wire and tests, and `dexname_test` fails if a screen prints it |
 | `types.h` | Type-effectiveness helpers over the generated 18x18 chart in `dex.h` |
 | `party.cpp/.h` | The 6 retired pets banked by farewell/release (not runaway) |
+| `calendar.h` | Dates from the RTC, the calendar events and their egg types; pure, so `calendar_test` sweeps whole years |
 | `i18n.cpp/.h` | 6-language string table (ES/EN/FR/DE/IT/PT) |
 | `audio.cpp/.h` | ES8311 codec over I2S |
 | `rtcbat.cpp/.h` | PCF85063 RTC + AXP2101 battery/PMU/PWR button |

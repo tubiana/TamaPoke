@@ -90,6 +90,7 @@ void Pet::newEgg() {
   // sorteo shiny: 1/48 base, mejor con despedida y con racha/vinculo altos
   int shinyBase = (lastEnd == CER_FAREWELL ? 24 : 48) - careBonus();
   if (shinyBase < 8) shinyBase = 8;
+  if (eventToday() == EV_NEWYEAR) shinyBase /= 2;   // New Year's luck: twice the odds
   eggShiny = (random(shinyBase) == 0);
   // The debt lands on the creature about to hatch, and is spent doing so --
   // it is a one-day penalty, not a running total that compounds each retire.
@@ -213,6 +214,7 @@ void Pet::tick() {
     if (due && ageMinutes % 3 == 0) hygiene = dropTo(hygiene, 1, 45);
     defTick(true);  // descansar tambien es bienestar: cuenta para la DEF
     checkMedals();  // aun puede cruzar un nivel por edad mientras duerme
+    checkStickers();
     if (++ticksSinceSave >= 5) pendingSave = true;
     return;
   }
@@ -254,6 +256,7 @@ void Pet::tick() {
   }
 
   checkMedals();  // la evolucion la dispara el usuario (canEvolveNow + tap), no el tick
+  checkStickers();
   checkLearnGates();
 
   // abandono total: con TODO a cero durante una hora queda lista para escaparse;
@@ -368,6 +371,99 @@ void Pet::setDrainPct(int pct) {
   save();
 }
 
+uint8_t Pet::eventToday() const {
+  uint32_t d = today();
+  if (!d) return EV_NONE;                       // no clock, no calendar
+  return calEventOn(calFromDays(d), bdayMonth, bdayDay);
+}
+
+void Pet::setBirthday(uint8_t month, uint8_t day) {
+  if (month < 1 || month > 12 || day < 1) { month = 0; day = 0; }   // cleared
+  else if (day > calMonthDays(month, 2024)) day = calMonthDays(month, 2024);  // 29 Feb allowed
+  bdayMonth = month;
+  bdayDay = day;
+  save();
+}
+
+bool Pet::giftReady() const {
+  if (eventToday() != EV_BIRTHDAY) return false;
+  return giftYear != calFromDays(today()).year;
+}
+
+// A shiny creature for the party, on the birthday. Chosen like an egg would
+// be -- a base form from an installed region that can be drawn, never a
+// legendary -- preferring one the Pokedex is still missing. Built through a
+// scratch Pet so it gets the same IVs (shiny floor included), level-gated
+// moves and stat formula as anything that hatches; that Pet was never
+// begin()'d, so it cannot save over the player's creature.
+int16_t Pet::openGift() {
+  if (!giftReady()) return 0;
+  if (party.count() >= PARTY_SLOTS && party.boxCount() >= BOX_SLOTS) return 0;
+  int16_t pick = 0;
+  for (int pass = 0; pass < 2 && !pick; pass++) {
+    uint16_t seen = 0;          // reservoir sampling: uniform, no candidate array
+    for (int16_t d = 1; d <= DEX_COUNT; d++) {
+      uint8_t r = DEX_TBL[d].rarity;
+      if (r != R_COMUN && r != R_RARO) continue;
+      if (!regionAvailable(regionOfDex(d)) || !speciesHasArt(d)) continue;
+      if (pass == 0 && isRegistered(d)) continue;
+      if (random(++seen) == 0) pick = d;
+    }
+  }
+  if (!pick) return 0;
+  uint16_t lvl = isEgg() ? GIFT_MIN_LEVEL : level();
+  if (lvl < GIFT_MIN_LEVEL) lvl = GIFT_MIN_LEVEL;
+  Pet g;
+  g.dbgHatchAs(pick, true);
+  g.ageMinutes = (uint32_t)(lvl - 1) * MINUTES_PER_LEVEL;
+  g.relearnFromLevel();
+  PartyMon m;
+  m.dex = pick;
+  m.level = lvl;
+  m.ivAtk = g.ivAtk; m.ivDef = g.ivDef; m.ivSpe = g.ivSpe; m.ivHp = g.ivHp;
+  m.shiny = 1;
+  for (int i = 0; i < MOVE_SLOTS; i++) m.moves[i] = g.moves[i];
+  if (!party.add(m) && !party.boxAdd(m)) return 0;
+  dexReg[(pick - 1) >> 3] |= (1 << ((pick - 1) & 7));
+  dexShinyReg[(pick - 1) >> 3] |= (1 << ((pick - 1) & 7));
+  giftYear = calFromDays(today()).year;
+  stickers |= 1UL << STK_BIRTHDAY;
+  newSticker = STK_BIRTHDAY;
+  stickerUntil = millis() + 4000;
+  checkStickers();              // the new Pokedex entry may cross a milestone too
+  save();
+  return pick;
+}
+
+uint8_t Pet::stickerCount() const {
+  uint8_t n = 0;
+  for (uint8_t s = 0; s < STK_COUNT; s++) n += hasSticker(s);
+  return n;
+}
+
+void Pet::checkStickers() {
+  uint32_t had = stickers;
+  uint8_t ev = eventToday();
+  // the birthday's sticker comes with its present, not merely with the date
+  if (ev != EV_NONE && ev != EV_BIRTHDAY) stickers |= 1UL << (ev - 1);
+  uint16_t n = registeredCount();
+  if (n >= 10) stickers |= 1UL << STK_DEX10;
+  if (n >= 50) stickers |= 1UL << STK_DEX50;
+  if (n >= 100) stickers |= 1UL << STK_DEX100;
+  if (n >= 200) stickers |= 1UL << STK_DEX200;
+  if (quizRight >= 10) stickers |= 1UL << STK_QUIZ10;
+  if (quizRight >= 50) stickers |= 1UL << STK_QUIZ50;
+  for (size_t i = 0; i < sizeof(dexShinyReg); i++)
+    if (dexShinyReg[i]) { stickers |= 1UL << STK_SHINY; break; }
+  uint32_t got = stickers & ~had;
+  if (!got) return;
+  for (uint8_t s = 0; s < STK_COUNT; s++)
+    if ((got >> s) & 1) { newSticker = (int8_t)s; break; }
+  stickerUntil = millis() + 4000;
+  sfxPlay(SFX_MEDAL);
+  pendingSave = true;
+}
+
 uint8_t Pet::quizLeft() const {
   if (today() != quizDay) return QUIZ_PER_DAY;   // a new day, a full allowance
   return quizUsed >= QUIZ_PER_DAY ? 0 : (uint8_t)(QUIZ_PER_DAY - quizUsed);
@@ -378,6 +474,8 @@ void Pet::quizAnswered(bool right) {
   if (d != quizDay) { quizDay = d; quizUsed = 0; }
   if (quizUsed < QUIZ_PER_DAY) quizUsed++;
   if (right && !isEgg() && ceremony == CER_NONE) joy = clamp100(joy + QUIZ_JOY);
+  if (right && quizRight < 0xFFFF) quizRight++;
+  checkStickers();
   save();
 }
 
@@ -496,14 +594,25 @@ int16_t Pet::pickEggSpecies() {
     else if (r < leg + rare) tier = R_RARO;
   }
 
+  // While a calendar event lasts, half the eggs lean to its type -- Ghost at
+  // Halloween, Ice at Christmas (calendar.h). Only within the tier already
+  // rolled, so a lean can never turn a rare egg into a common one; if the
+  // region has none of that type in the tier, the egg is simply ordinary.
+  // Outside an event this costs no random() call, so nothing else shifts.
+  const uint8_t lean = calEggType(eventToday());
+  const bool leanOn = (lean != T_NONE) && random(2) == 0;
+
   // candidatos del tier con linea incompleta; si no hay, baja de tier;
   // si la pokedex del tier esta completa, vale cualquiera del tier
+  for (int lp = leanOn ? 0 : 1; lp < 2; lp++)
   for (int pass = 0; pass < 2; pass++) {
     for (int t = tier; t >= R_COMUN; t--) {
+      if (lp == 0 && t != tier) break;
       int16_t cand[CAND_MAX];
       int n = 0;
       for (int16_t d = rg.lo; d <= rg.hi && n < CAND_MAX; d++) {
         if (DEX_TBL[d].rarity != t) continue;
+        if (lp == 0 && DEX_TBL[d].type1 != lean && DEX_TBL[d].type2 != lean) continue;
         if (pass == 0 && !lineHasUnregistered(d)) continue;
         // ALL spans every region, so filter per species: a missing Sinnoh pack
         // must not put a Sinnoh creature in a mixed egg.
@@ -1362,6 +1471,11 @@ void Pet::save() {
   prefs.putUChar("drn", drainPct);
   prefs.putUInt("qday", quizDay);
   prefs.putUChar("qn", quizUsed);
+  prefs.putUShort("qok", quizRight);
+  prefs.putUChar("bdm", bdayMonth);
+  prefs.putUChar("bdd", bdayDay);
+  prefs.putUShort("gyr", giftYear);
+  prefs.putUInt("stkr", stickers);
   prefs.putUChar("bond", bond);
   prefs.putUShort("medal", medals);
   prefs.putUShort("tmedal", totalMedals);
@@ -1433,6 +1547,12 @@ void Pet::load() {
   if (drainPct < DRAIN_MIN || drainPct > 100 || drainPct % DRAIN_STEP) drainPct = 100;
   quizDay = prefs.getUInt("qday", 0);
   quizUsed = prefs.getUChar("qn", 0);
+  quizRight = prefs.getUShort("qok", 0);
+  bdayMonth = prefs.getUChar("bdm", 0);
+  bdayDay = prefs.getUChar("bdd", 0);
+  if (bdayMonth > 12 || bdayDay > 31) bdayMonth = bdayDay = 0;
+  giftYear = prefs.getUShort("gyr", 0);
+  stickers = prefs.getUInt("stkr", 0);
   bond = prefs.getUChar("bond", 0);
   medals = prefs.getUShort("medal", 0);
   totalMedals = prefs.getUShort("tmedal", 0);
