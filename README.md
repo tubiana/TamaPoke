@@ -3,7 +3,7 @@
 [![Flash in browser](https://img.shields.io/badge/flash-in%20browser-FF6B00?logo=googlechrome&logoColor=white)](https://dylanpdao.github.io/TamaPoke/web/)
 [![MakerWorld](https://img.shields.io/badge/MakerWorld-3D%20case-00AE42?logo=bambulab&logoColor=white)](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)
 ![Board](https://img.shields.io/badge/board-ESP32--S3%20round%20AMOLED-E7352C?logo=espressif&logoColor=white)
-![Firmware](https://img.shields.io/badge/firmware-v3.11-8A2BE2)
+![Firmware](https://img.shields.io/badge/firmware-v3.12-8A2BE2)
 ![Code](https://img.shields.io/badge/code-MIT-blue)
 ![Languages](https://img.shields.io/badge/languages-6-FFCB05)
 [![Stars](https://img.shields.io/github/stars/DylanPDao/TamaPoke?style=flat&logo=github&color=yellow)](https://github.com/DylanPDao/TamaPoke/stargazers)
@@ -632,6 +632,9 @@ a farewell and punished by a runaway. Legendaries only with 25+ registered.
 
 **Languages:** the UI ships in 6 languages — English (default), Spanish, French,
 German, Italian, Portuguese — switchable from the settings screen (swipe down).
+Species names follow it too (SALAMECHE in French, GLUMANDA in German), from
+PokeAPI via `tools/gen_dex_names.py`, accents folded since the font has none.
+Portuguese, Spanish and Italian keep the English names, as their games do.
 
 ## Backgrounds: biome + real time
 
@@ -648,6 +651,7 @@ beach, forest, volcano, mountain, snow). Sleeping forces night.
 - `rtcbat.h` / `rtcbat.cpp` — PCF85063 RTC + AXP2101 PMU (battery, brightness, PWR button)
 - `audio.h` / `audio.cpp` — ES8311 + I2S + Game-Boy-style tone synth (non-blocking task)
 - `i18n.h` / `i18n.cpp` — the 6-language string tables
+- `dex_names.h` — GENERATED (`gen_dex_names.py`): species names per language, read via `dexName()`
 - `dex.h` — GENERATED (`gen_dex.py`): the 386 table
 - `species.h` — GENERATED (`sprites.py`): fallback sprites, UI icons, colours
 - `pin_config.h` — the board's official pins

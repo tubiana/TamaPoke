@@ -27,7 +27,7 @@ struct Combatant {
   bool recharge = false;     // EF_RECHARGE spent this creature's next turn
   uint8_t charging = 0;      // EF_CHARGE move already wound up
   bool shiny = false;        // which sprite variant to stream
-  char name[12] = "";
+  char name[13] = "";        // 12 + NUL: CRABOMINABLE and PANDESPIEGLE are 12
 
   bool fainted() const { return hp == 0; }
 };
