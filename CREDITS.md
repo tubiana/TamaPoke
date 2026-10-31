@@ -99,6 +99,14 @@ sourced by it. Before this repo goes public, confirm where they came from and
 under what licence, the same way the PMD sprites are accounted for above — and
 replace them if that cannot be answered.
 
+**The project's own scenes.** `OCEAN`, `VOLCANO` (each with a `NIGHT`) and the
+eight `ARENA *` files are drawn from scratch by `tools/gen_scenes.py` -- pure
+code, no source image, no generative model -- and fall under the project's MIT
+licence like the rest of the code. That script never overwrites an existing
+file without `--force`, so any of them can be replaced by another picture under
+the same name; `gen_backs.py` fits whatever it finds to 240x112 and 255 colours.
+If a replacement comes from an image generator, record that here.
+
 ## Gym badge artwork
 
 Two sources, because no single one covers every region.

@@ -72,6 +72,32 @@ def read_png(path):
     return w, h, ch, rows
 
 
+def load(path, size=(240, 112)):
+    """Any picture -> (w, h, ch, rows) at the backdrop size, <= 255 colours.
+
+    A file that is already 240x112 with few colours goes through read_png()
+    untouched, so the supplied art packs byte for byte as before. Anything else
+    -- a photo-like image from a generator, a different size -- is cropped to
+    the backdrop's shape, scaled, and reduced to 255 colours. That needs
+    Pillow, and only then."""
+    w, h, ch, rows = read_png(path)
+    if (w, h) == size and len({line[x:x + 3] for line in rows
+                               for x in range(0, len(line), ch)}) <= 256:
+        return w, h, ch, rows
+    try:
+        from PIL import Image
+    except ImportError:
+        raise SystemExit('%s is %dx%d or has many colours: install Pillow to fit it' % (path, w, h))
+    im = Image.open(path).convert('RGB')
+    tw, th = size
+    scale = max(tw / im.width, th / im.height)          # cover, then centre-crop
+    im = im.resize((max(tw, round(im.width * scale)), max(th, round(im.height * scale))), Image.LANCZOS)
+    l, t = (im.width - tw) // 2, (im.height - th) // 2
+    im = im.crop((l, t, l + tw, t + th)).quantize(255, dither=Image.Dither.NONE).convert('RGB')
+    raw = im.tobytes()
+    return tw, th, 3, [raw[y * tw * 3:(y + 1) * tw * 3] for y in range(th)]
+
+
 def to_indexed(w, h, ch, rows):
     pal, idx = [], []
     lut = {}
@@ -97,7 +123,7 @@ def main():
     for bi, (base, note) in enumerate(BIOMES):
         for ni, suffix in enumerate(('', ' NIGHT')):
             path = os.path.join(SRC, base + suffix + '.png')
-            w, h, ch, rows = read_png(path)
+            w, h, ch, rows = load(path)
             pal, idx = to_indexed(w, h, ch, rows)
             nm = 'BACK_%d_%d' % (bi, ni)
             names.append((nm, w, h, len(pal)))
