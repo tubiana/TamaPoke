@@ -47,3 +47,6 @@ tamapoke.nvs
 tamapoke.nvs.*
 tools/_*.svg
 backups/
+
+# the manual's captures and unpacked sprites (tools/manual/build.sh)
+tools/manual/work/
