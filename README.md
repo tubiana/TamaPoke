@@ -3,7 +3,7 @@
 [![Flash in browser](https://img.shields.io/badge/flash-in%20browser-FF6B00?logo=googlechrome&logoColor=white)](https://dylanpdao.github.io/TamaPoke/web/)
 [![MakerWorld](https://img.shields.io/badge/MakerWorld-3D%20case-00AE42?logo=bambulab&logoColor=white)](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)
 ![Board](https://img.shields.io/badge/board-ESP32--S3%20round%20AMOLED-E7352C?logo=espressif&logoColor=white)
-![Firmware](https://img.shields.io/badge/firmware-v3.14-8A2BE2)
+![Firmware](https://img.shields.io/badge/firmware-v3.15-8A2BE2)
 ![Code](https://img.shields.io/badge/code-MIT-blue)
 ![Languages](https://img.shields.io/badge/languages-6-FFCB05)
 [![Stars](https://img.shields.io/github/stars/DylanPDao/TamaPoke?style=flat&logo=github&color=yellow)](https://github.com/DylanPDao/TamaPoke/stargazers)
@@ -173,6 +173,35 @@ While **awake**, per minute:
   evening is deliberately outside the window -- a six-hour night is the only part
   of the day you are not expected to be around. The light
   button beats both: a creature you sent to bed stays there.
+
+### Calendar, birthday and stickers
+The RTC's date drives a few days in the year (`calendar.h`). While one lasts the
+main screen is decorated, the status line greets it, **half the eggs rolled lean
+to its type** (only within the rarity tier already rolled, so a lean never
+downgrades an egg), and having the device on earns its sticker.
+
+| Event | Dates | Eggs lean to |
+|---|---|---|
+| New Year | 1 Jan | *(none: the shiny odds double instead)* |
+| Valentine's Day | 14 Feb | Fairy |
+| Pokémon Day | 27 Feb | Electric |
+| Spring | 20–26 Mar | Grass |
+| Summer | 21–27 Jun | Water |
+| Autumn | 22–28 Sep | Ground |
+| Halloween | 25–31 Oct | Ghost |
+| Winter | 21–23 Dec | Ice |
+| Christmas | 24–26 Dec | Ice |
+
+- **Birthday** (OPTIONS, day / month): a **present** waits on the main screen
+  all day. Tapping it puts a **shiny** in the party (or the box) -- a random
+  base form from an installed region, never a legendary, preferring one missing
+  from the Pokédex, at the live creature's level (5 at least). Once a year; with
+  party and box both full it stays wrapped until there is room. A 29 February
+  birthday is kept on the 28th in other years. A birthday beats any other event.
+- **Stickers** (the last page of the player card): one per event above plus the
+  birthday's (which comes with its present), and milestones -- 10 / 50 / 100 /
+  200 species in the Pokédex, 10 / 50 quiz answers right, a shiny in the Pokédex.
+  Kept forever.
 
 ### Eggs & who you get (spawn odds)
 - **First ever pet:** you pick a starter — **Bulbasaur / Charmander / Squirtle**.

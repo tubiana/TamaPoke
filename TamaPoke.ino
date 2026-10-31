@@ -36,7 +36,7 @@
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
-#define FW_VERSION "3.14"
+#define FW_VERSION "3.15"
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   LCD_CS, LCD_SCLK, LCD_SDIO0, LCD_SDIO1, LCD_SDIO2, LCD_SDIO3);
@@ -143,6 +143,13 @@ uint8_t boxDetail = 0;        // box slot + 1 whose sheet is open
 bool releaseConfirm = false;
 #define BOX_PER_PAGE 6
 uint32_t partyBannerUntil = 0;   // "<name> joined the party!"
+// The birthday present on the main screen (Pet::giftReady()), and how long to
+// say there is no room for it when party and box are both full.
+#define PRESENT_X 50
+#define PRESENT_Y 250
+#define PRESENT_W 46
+#define PRESENT_H 40
+uint32_t giftFullUntil = 0;
 char partyBannerName[14] = "";
 #define PARTY_CELL_W 150
 #define PARTY_CELL_H 70
@@ -244,6 +251,10 @@ uint8_t uiCurrentScreen();
 // the quiz (near the top) and OPTIONS draw with these, defined far below
 void drawThumb(const uint8_t *b, int x, int y, int s, bool sil);
 void drawClockBtn(int x, int y, const char *l);
+void drawEventDecor(uint8_t ev, uint32_t now);
+void drawPresent(uint32_t now);
+void drawSticker(uint8_t s, int cx, int cy, bool got);
+void renderPlayerStickers();
 // Declared here because renderMonSheet() and the sheet's tap handlers use both
 // ~4000 lines above where they are defined. The emulator generates a proto.h and
 // would compile it either way; arduino-cli would not, and that has shipped once.
@@ -463,7 +474,7 @@ bool playerOpen = false;
 // one page, and the page you are on IS the region -- no extra control needed,
 // and horizontal paging already works everywhere else.
 uint8_t playerPage = 0;
-#define PLAYER_PAGES (GYM_REGIONS + 1)
+#define PLAYER_PAGES (GYM_REGIONS + 2)   // badges per region, medals, stickers
 #define playerBadgeRegion (playerPage % GYM_REGIONS)
 uint8_t gymPage = 0;
 #define GYM_ROWS 5
@@ -762,6 +773,233 @@ bool cryOnCaress(uint32_t now) {
   if (random(CRY_CARESS_ODDS)) return false;
   lastCaressCry = now ? now : 1;     // 0 means "never"
   return true;
+}
+
+// ---------- calendar decorations, the present, stickers ----------
+// Drawn from primitives -- there is no art for any of this, and none is
+// needed. Particles are a fixed set placed by index and moved by the clock, so
+// they animate without any state and the screenshot tests stay deterministic.
+#define C_ORANGE 0xFC00
+#define C_PINK 0xFB56
+#define C_YELLOW 0xFFE0
+#define C_RED 0xF800
+#define C_GREEN 0x2589
+#define C_PURPLE 0x801F
+#define C_SKY 0x5D9F
+#define C_BROWN 0xA285
+static void drawHeart(int x, int y, int r, uint16_t c) {
+  gfx->fillCircle(x - r / 2, y, r / 2 + 1, c);
+  gfx->fillCircle(x + r / 2, y, r / 2 + 1, c);
+  gfx->fillTriangle(x - r - 1, y + 1, x + r + 1, y + 1, x, y + r + 2, c);
+}
+static void drawPumpkin(int x, int y, int r) {
+  gfx->fillCircle(x, y, r, C_ORANGE);
+  gfx->fillRect(x - 1, y - r - 4, 3, 5, C_GREEN);
+  gfx->fillTriangle(x - r / 2 - 2, y - 2, x - r / 2 + 2, y - 2, x - r / 2, y - 6, 0x0000);
+  gfx->fillTriangle(x + r / 2 - 2, y - 2, x + r / 2 + 2, y - 2, x + r / 2, y - 6, 0x0000);
+  gfx->drawFastHLine(x - r / 2, y + r / 3, r, 0x0000);
+}
+// a particle's position: x across the scene, y falling (dir 1) or rising (-1)
+static void particleAt(int i, uint32_t now, int dir, int *px, int *py) {
+  int speed = 30 + (i % 5) * 12;
+  int span = 200;
+  int t = (int)((now / speed + (uint32_t)i * 53) % span);
+  *px = 40 + (i * 97 + 31) % 386 + (int)((t / 20) % 3) - 1;
+  *py = dir > 0 ? 100 + t : 300 - t;
+}
+
+void drawEventDecor(uint8_t ev, uint32_t now) {
+  int x, y;
+  switch (ev) {
+    case EV_NEWYEAR:            // fireworks, three bursts out of step
+      for (int k = 0; k < 3; k++) {
+        int cx = 110 + k * 125, cy = 130 + (k % 2) * 30;
+        int r = (int)((now / 25 + k * 40) % 60);
+        uint16_t c = k == 0 ? C_YELLOW : k == 1 ? C_PINK : C_SKY;
+        for (int a = 0; a < 8; a++) {
+          float an = a * 0.785f;
+          gfx->fillCircle(cx + (int)(cosf(an) * r), cy + (int)(sinf(an) * r), 2, c);
+        }
+      }
+      break;
+    case EV_VALENTINE:          // hearts drifting up
+      for (int i = 0; i < 8; i++) { particleAt(i, now, -1, &x, &y); drawHeart(x, y, 7, C_PINK); }
+      break;
+    case EV_POKEDAY:            // balloons on strings
+      for (int i = 0; i < 6; i++) {
+        particleAt(i, now, -1, &x, &y);
+        gfx->drawFastVLine(x, y + 10, 16, 0x8410);
+        gfx->fillCircle(x, y, 9, i % 2 ? C_RED : C_YELLOW);
+      }
+      break;
+    case EV_SPRING:             // petals
+      for (int i = 0; i < 14; i++) { particleAt(i, now, 1, &x, &y); gfx->fillCircle(x, y, 3, C_PINK); }
+      break;
+    case EV_SUMMER: {           // a big sun, top left of the scene
+      int cx = 92, cy = 130;
+      for (int a = 0; a < 12; a++) {
+        float an = a * 0.5236f + (now % 6000) / 6000.0f * 0.5236f;
+        gfx->drawLine(cx + (int)(cosf(an) * 24), cy + (int)(sinf(an) * 24),
+                      cx + (int)(cosf(an) * 34), cy + (int)(sinf(an) * 34), C_YELLOW);
+      }
+      gfx->fillCircle(cx, cy, 20, C_YELLOW);
+      break;
+    }
+    case EV_AUTUMN:             // leaves
+      for (int i = 0; i < 12; i++) {
+        particleAt(i, now, 1, &x, &y);
+        gfx->fillTriangle(x - 4, y, x + 4, y, x, y + 7, i % 2 ? C_ORANGE : C_BROWN);
+      }
+      break;
+    case EV_HALLOWEEN:          // pumpkins either side of the creature
+      drawPumpkin(70, 282, 14);
+      drawPumpkin(396, 282, 14);
+      drawPumpkin(372, 290, 9);
+      break;
+    case EV_CHRISTMAS:          // a tree, then the snow
+      gfx->fillTriangle(396, 236, 376, 270, 416, 270, C_GREEN);
+      gfx->fillTriangle(396, 252, 372, 292, 420, 292, C_GREEN);
+      gfx->fillRect(393, 292, 7, 8, C_BROWN);
+      gfx->fillCircle(396, 236, 4, C_YELLOW);
+      // fall through: Christmas has snow too
+    case EV_WINTER:
+      for (int i = 0; i < 16; i++) { particleAt(i, now, 1, &x, &y); gfx->fillCircle(x, y, 2, 0xFFFF); }
+      break;
+    case EV_BIRTHDAY:           // confetti and a cake
+      for (int i = 0; i < 16; i++) {
+        particleAt(i, now, 1, &x, &y);
+        const uint16_t cc[4] = { C_PINK, C_YELLOW, C_SKY, C_GREEN };
+        gfx->fillRect(x, y, 4, 4, cc[i % 4]);
+      }
+      gfx->fillRoundRect(374, 270, 44, 26, 5, 0xFFFF);
+      gfx->fillRect(374, 278, 44, 5, C_PINK);
+      gfx->fillRect(395, 258, 3, 12, C_RED);
+      gfx->fillCircle(396, 254, 3, ((now / 200) % 2) ? C_YELLOW : C_ORANGE);
+      break;
+    default:
+      break;
+  }
+}
+
+// a wrapped box with a bow, bobbing so it reads as something to touch
+void drawPresent(uint32_t now) {
+  int x = PRESENT_X, y = PRESENT_Y + (int)((now / 300) % 2) * 2;
+  gfx->fillRoundRect(x, y, PRESENT_W, PRESENT_H, 5, C_RED);
+  gfx->drawRoundRect(x, y, PRESENT_W, PRESENT_H, 5, UI_INK);
+  gfx->fillRect(x + PRESENT_W / 2 - 4, y, 8, PRESENT_H, C_YELLOW);
+  gfx->fillRect(x, y + 10, PRESENT_W, 7, C_YELLOW);
+  gfx->fillTriangle(x + PRESENT_W / 2, y + 2, x + PRESENT_W / 2 - 14, y - 10, x + PRESENT_W / 2 - 12, y + 4, C_YELLOW);
+  gfx->fillTriangle(x + PRESENT_W / 2, y + 2, x + PRESENT_W / 2 + 14, y - 10, x + PRESENT_W / 2 + 12, y + 4, C_YELLOW);
+}
+
+// One sticker, centred on cx, cy. A missing one is a grey disc: the shape of
+// the collection is visible from the start, which is half of wanting it.
+void drawSticker(uint8_t s, int cx, int cy, bool got) {
+  const int r = 22;
+  if (!got) {
+    gfx->fillCircle(cx, cy, r, UI_TRACK);
+    gfx->drawCircle(cx, cy, r, 0x9492);
+    return;
+  }
+  static const uint16_t BG[STK_COUNT] = {
+    0x10A6, C_PINK, C_YELLOW, C_GREEN, C_SKY, C_BROWN, C_PURPLE, 0xAEDF, C_RED, 0xFE19,
+    C_RED, C_RED, C_RED, C_RED, 0x4C98, 0x4C98, 0xFEA0,
+  };
+  gfx->fillCircle(cx, cy, r, BG[s]);
+  gfx->drawCircle(cx, cy, r, UI_INK);
+  switch (s) {
+    case STK_NEWYEAR:
+      for (int a = 0; a < 8; a++) {
+        float an = a * 0.785f;
+        gfx->drawLine(cx + (int)(cosf(an) * 5), cy + (int)(sinf(an) * 5),
+                      cx + (int)(cosf(an) * 15), cy + (int)(sinf(an) * 15), C_YELLOW);
+      }
+      break;
+    case STK_VALENTINE: drawHeart(cx, cy - 3, 12, 0xFFFF); break;
+    case STK_POKEDAY:           // a lightning bolt
+      gfx->fillTriangle(cx + 2, cy - 15, cx - 9, cy + 2, cx + 1, cy + 1, 0x0000);
+      gfx->fillTriangle(cx - 2, cy - 1, cx + 8, cy - 2, cx - 3, cy + 15, 0x0000);
+      break;
+    case STK_SPRING:
+      for (int a = 0; a < 5; a++) {
+        float an = a * 1.2566f;
+        gfx->fillCircle(cx + (int)(cosf(an) * 8), cy + (int)(sinf(an) * 8), 6, C_PINK);
+      }
+      gfx->fillCircle(cx, cy, 5, C_YELLOW);
+      break;
+    case STK_SUMMER:
+      for (int a = 0; a < 8; a++) {
+        float an = a * 0.785f;
+        gfx->drawLine(cx + (int)(cosf(an) * 11), cy + (int)(sinf(an) * 11),
+                      cx + (int)(cosf(an) * 17), cy + (int)(sinf(an) * 17), C_YELLOW);
+      }
+      gfx->fillCircle(cx, cy, 9, C_YELLOW);
+      break;
+    case STK_AUTUMN:
+      gfx->fillTriangle(cx - 11, cy - 4, cx + 11, cy - 4, cx, cy + 14, C_ORANGE);
+      gfx->fillTriangle(cx - 8, cy - 4, cx + 8, cy - 4, cx, cy - 15, C_ORANGE);
+      gfx->drawLine(cx, cy - 10, cx, cy + 16, C_BROWN);
+      break;
+    case STK_HALLOWEEN: drawPumpkin(cx, cy + 2, 12); break;
+    case STK_WINTER:
+      for (int a = 0; a < 3; a++) {
+        float an = a * 1.0472f;
+        int dx = (int)(cosf(an) * 15), dy = (int)(sinf(an) * 15);
+        gfx->drawLine(cx - dx, cy - dy, cx + dx, cy + dy, 0xFFFF);
+      }
+      break;
+    case STK_CHRISTMAS:
+      gfx->fillTriangle(cx, cy - 15, cx - 12, cy + 8, cx + 12, cy + 8, C_GREEN);
+      gfx->fillRect(cx - 2, cy + 8, 5, 6, C_BROWN);
+      gfx->fillCircle(cx, cy - 15, 3, C_YELLOW);
+      break;
+    case STK_BIRTHDAY:
+      gfx->fillRoundRect(cx - 12, cy - 2, 24, 14, 3, 0xFFFF);
+      gfx->fillRect(cx - 12, cy + 3, 24, 3, C_PINK);
+      gfx->fillRect(cx - 1, cy - 11, 3, 9, C_RED);
+      gfx->fillCircle(cx, cy - 13, 2, C_YELLOW);
+      break;
+    case STK_SHINY:             // a star
+      gfx->fillTriangle(cx, cy - 15, cx - 13, cy + 8, cx + 13, cy + 8, 0xFFFF);
+      gfx->fillTriangle(cx, cy + 14, cx - 13, cy - 5, cx + 13, cy - 5, 0xFFFF);
+      break;
+    default: {                  // the milestones: their number, or a "?" for the quiz
+      const char *t = s == STK_DEX10 ? "10" : s == STK_DEX50 ? "50" : s == STK_DEX100 ? "100"
+                    : s == STK_DEX200 ? "200" : "?";
+      int ts = strlen(t) > 2 ? 1 : 2;
+      if (s == STK_QUIZ10 || s == STK_QUIZ50) ts = 3;
+      gfx->setTextColor(0xFFFF);
+      gfx->setTextSize(ts);
+      gfx->setCursor(cx - (int)strlen(t) * 3 * ts, cy - 4 * ts);
+      gfx->print(t);
+      break;
+    }
+  }
+}
+
+#define STK_COLS 6
+#define STK_DX 62
+#define STK_ROW_Y(r) (112 + (r) * 84)
+void renderPlayerStickers() {
+  char head[32];
+  snprintf(head, sizeof(head), "%s %u/%u", T(S_STICKERS), pet.stickerCount(), STK_COUNT);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(2);
+  gfx->setCursor(CX - (int)strlen(head) * 6, 44);
+  gfx->print(head);
+  for (uint8_t s = 0; s < STK_COUNT; s++) {
+    int row = s / STK_COLS, col = s % STK_COLS;
+    int inRow = (row == (STK_COUNT - 1) / STK_COLS) ? (STK_COUNT - row * STK_COLS) : STK_COLS;
+    int cx = CX - (inRow - 1) * STK_DX / 2 + col * STK_DX;
+    int cy = STK_ROW_Y(row);
+    bool got = pet.hasSticker(s);
+    drawSticker(s, cx, cy, got);
+    const char *nm = stickerName(s);
+    gfx->setTextColor(got ? UI_INK : 0x9492);
+    gfx->setTextSize(1);
+    gfx->setCursor(cx - (int)strlen(nm) * 3, cy + 28);
+    gfx->print(nm);
+  }
 }
 
 // ---------- quiz ----------
@@ -1937,7 +2175,10 @@ void onTap(int16_t x, int16_t y) {
     gymOpen = false;
     return;
   }
-  if (pet.hasLearnOffer()) {
+  // Only when the prompt is what is DRAWN. It used to be `if (hasLearnOffer())`,
+  // which answered taps meant for the party, the Pokedex, SETTINGS... -- every
+  // screen render() puts on top of a pending prompt. See uiCurrentScreen().
+  if (uiCurrentScreen() == SCR_LEARN) {
     for (int i = 0; i < MOVE_SLOTS; i++) {
       int ry = LEARN_ROW_Y(i);
       if (x < 70 || x > 396 || y < ry || y > ry + 50) continue;
@@ -2111,6 +2352,21 @@ void onTap(int16_t x, int16_t y) {
       sfxPlay(SFX_EAT);
     }
     feedMenuUntil = 0;
+    return;
+  }
+  // The birthday present, bottom-left of the scene and clear of inPetZone
+  // (x > 110), so reaching for it can never be a caress or an egg tap.
+  if (pet.giftReady() && x >= PRESENT_X - 14 && x <= PRESENT_X + PRESENT_W + 14 &&
+      y >= PRESENT_Y - 14 && y <= PRESENT_Y + PRESENT_H + 14) {
+    int16_t d = pet.openGift();
+    if (d) {
+      snprintf(partyBannerName, sizeof(partyBannerName), "%s", dexName(d));
+      partyBannerUntil = millis() + 4000;     // "<name> joined the party!"
+      cryPlay(d);
+    } else {
+      giftFullUntil = millis() + 3000;        // party and box are both full
+      sfxPlay(SFX_DENY);
+    }
     return;
   }
   if (pet.isEgg()) {
@@ -2325,25 +2581,31 @@ RTC_NOINIT_ATTR uint32_t gCrumbScreen;
 RTC_NOINIT_ATTR uint32_t gCrumbHeap;
 
 
-// Which screen is on the panel RIGHT NOW, in the same order render() tests.
+// Which screen is on the panel RIGHT NOW, in EXACTLY the order render() tests.
+//
+// It said so before and was not true: the learn prompt, the minigames, the
+// training menu and the card sat in different places here than in render().
+// With a "wants to learn" prompt pending, a swipe right drew the PARTY over
+// it -- render() draws the party first -- while onTap() still sent every tap
+// to the hidden prompt, so tapping a party slot taught or skipped a move. The
+// tap handler now asks this function, so the order here is load-bearing.
 uint8_t uiCurrentScreen() {
   if (pet.awaitingStarter()) return starterRegionDone ? SCR_STARTER : SCR_REGION;
   if (quizOpen) return SCR_QUIZ;     // drawn over the Pokedex chooser it came from
   if (galleryOpen) return galleryPick ? SCR_DEXPICK : SCR_GALLERY;
   if (movePickOpen) return SCR_MOVEPICK;
   if (partyOpen) return boxOpen ? SCR_BOX : SCR_PARTY;
+  if (gameOpen || sackOpen || spdOpen) return SCR_GAME;
+  if (trainOpen) return SCR_TRAIN;
   if (kbOpen) return SCR_KEYBOARD;
-  if (cardOpen) return SCR_CARD;
-  if (playerOpen) return SCR_PLAYER;
   if (clockOpen) return SCR_CLOCK;
-  if (btlWinUntil) return SCR_WIN;
-  if (battleOpen) return SCR_BATTLE;
+  if (battleOpen) return btlWinUntil ? SCR_WIN : SCR_BATTLE;
   if (pickOpen) return SCR_PICK;
   if (lanOpen) return SCR_LAN;
   if (gymOpen) return gymPick ? SCR_GYMPICK : SCR_GYM;
+  if (playerOpen) return SCR_PLAYER;
   if (pet.hasLearnOffer()) return SCR_LEARN;
-  if (gameOpen || sackOpen || spdOpen) return SCR_GAME;
-  if (trainOpen) return SCR_TRAIN;
+  if (cardOpen) return SCR_CARD;
   if (menuOpen) return SCR_MENU;
   return SCR_MAIN;
 }
@@ -2474,6 +2736,10 @@ void render() {
   // drawScene cubre los 466x466 completos: sin fillScreen(NEGRO) previo para
   // que un flush DMA solapado nunca capture negro a medias (anti-parpadeo)
   drawScene(pet.isEgg() ? 0 : DEX_TBL[pet.speciesId].biome, millis(), gNight);
+  if (!pet.ceremony) {
+    drawEventDecor(pet.eventToday(), millis());
+    if (pet.giftReady()) drawPresent(millis());
+  }
 
   if (pet.ceremony) {
     const DexEntry &d = DEX_TBL[pet.speciesId];
@@ -3008,6 +3274,13 @@ static void drawSettingsDots() {
 #define OPT_SPD_Y 226                 // the - / + boxes, drawn by drawClockBtn
 #define OPT_MINUS_X 112
 #define OPT_PLUS_X 296
+#define OPT_BD_Y 350                  // the birthday's four buttons
+#define OPT_BD_W 40
+#define OPT_BD_H 40
+#define OPT_BD_DM_X 92                // day - / +
+#define OPT_BD_DP_X 172
+#define OPT_BD_MM_X 254               // month - / +
+#define OPT_BD_MP_X 334
 void renderOptions() {
   gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
@@ -3050,15 +3323,54 @@ void renderOptions() {
   gfx->setCursor(CX - (int)strlen(T(S_NEEDS_HINT)) * 3, OPT_SPD_Y + 74);
   gfx->print(T(S_NEEDS_HINT));
 
+  // the birthday: day and month, each with its own - and +. "--" = not set.
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(2);
+  gfx->setCursor(CX - (int)strlen(T(S_BIRTHDAY)) * 6, OPT_BD_Y - 26);
+  gfx->print(T(S_BIRTHDAY));
+  const int bx[4] = { OPT_BD_DM_X, OPT_BD_DP_X, OPT_BD_MM_X, OPT_BD_MP_X };
+  for (int i = 0; i < 4; i++) {
+    gfx->fillRoundRect(bx[i], OPT_BD_Y, OPT_BD_W, OPT_BD_H, 8, UI_WHITE);
+    gfx->drawRoundRect(bx[i], OPT_BD_Y, OPT_BD_W, OPT_BD_H, 8, UI_INK);
+    gfx->setCursor(bx[i] + OPT_BD_W / 2 - 6, OPT_BD_Y + 12);
+    gfx->print(i % 2 ? "+" : "-");
+  }
+  char dd[4], mm[4];
+  if (pet.bdayMonth) { snprintf(dd, sizeof(dd), "%u", pet.bdayDay); snprintf(mm, sizeof(mm), "%u", pet.bdayMonth); }
+  else { snprintf(dd, sizeof(dd), "--"); snprintf(mm, sizeof(mm), "--"); }
+  gfx->setTextSize(2);
+  int dcx = (OPT_BD_DM_X + OPT_BD_W + OPT_BD_DP_X) / 2, mcx = (OPT_BD_MM_X + OPT_BD_W + OPT_BD_MP_X) / 2;
+  gfx->setCursor(dcx - (int)strlen(dd) * 6, OPT_BD_Y + 12);
+  gfx->print(dd);
+  gfx->setCursor(mcx - (int)strlen(mm) * 6, OPT_BD_Y + 12);
+  gfx->print(mm);
+  gfx->setCursor(CX - 6, OPT_BD_Y + 12);
+  gfx->print("/");
+
   char ver[20];
   snprintf(ver, sizeof(ver), "TamaPoke v%s", FW_VERSION);
   gfx->setTextColor(UI_TRACK);
-  gfx->setCursor(CX - (int)strlen(ver) * 3, 436);
+  gfx->setTextSize(1);
+  gfx->setCursor(CX - (int)strlen(ver) * 3, 446);
   gfx->print(ver);
   gfx->flush();
 }
 
+static bool optBdHit(int16_t x, int16_t y, int bx) {
+  return y >= OPT_BD_Y - 6 && y <= OPT_BD_Y + OPT_BD_H + 6 && x >= bx - 3 && x <= bx + OPT_BD_W + 3;
+}
+
 void optionsTap(int16_t x, int16_t y) {
+  // the birthday: the day's - below 1 clears it; anything else starts it at 1/1
+  uint8_t m = pet.bdayMonth, d = pet.bdayDay;
+  if (optBdHit(x, y, OPT_BD_DM_X)) { pet.setBirthday(d > 1 ? m : 0, d > 1 ? d - 1 : 0); sfxPlay(SFX_TAP); return; }
+  if (optBdHit(x, y, OPT_BD_DP_X)) {
+    uint8_t mo = m ? m : 1;
+    pet.setBirthday(mo, d >= calMonthDays(mo, 2024) ? 1 : d + 1);   // 2024: 29 Feb is a real birthday
+    sfxPlay(SFX_TAP); return;
+  }
+  if (optBdHit(x, y, OPT_BD_MM_X)) { pet.setBirthday(m > 1 ? m - 1 : 12, d ? d : 1); sfxPlay(SFX_TAP); return; }
+  if (optBdHit(x, y, OPT_BD_MP_X)) { pet.setBirthday(m < 12 ? m + 1 : 1, d ? d : 1); sfxPlay(SFX_TAP); return; }
   // generous: these are tapped by a parent, but on a 1.75" round panel
   if (y >= OPT_KID_Y - 8 && y <= OPT_KID_Y + OPT_KID_H + 8 &&
       x >= OPT_KID_X - 10 && x <= OPT_KID_X + OPT_KID_W + 10) {
@@ -3266,6 +3578,9 @@ void drawCelebration() {
     snprintf(buf, sizeof(buf), T(S_STREAK_DAYS_FMT), pet.streak);
     l1 = T(S_GREAT);
     l2 = buf;
+  } else if (pet.showSticker()) {
+    l1 = T(S_NEW_STICKER);
+    l2 = stickerName(pet.newSticker);
   }
   if (!l1) return;
   gfx->fillRoundRect(73, 150, 320, 96, 16, UI_BAR_WARN);
@@ -4554,7 +4869,8 @@ void renderPlayer() {
   gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
   if (playerPage < GYM_REGIONS) renderPlayerBadges();
-  else renderPlayerMedals();
+  else if (playerPage == GYM_REGIONS) renderPlayerMedals();
+  else renderPlayerStickers();
 
   for (uint8_t i = 0; i < PLAYER_PAGES; i++) {
     int dx = CX - (PLAYER_PAGES - 1) * 13 + i * 26;
@@ -6579,6 +6895,14 @@ const char *statusMsg() {
   if (pet.joy < 25) return T(S_SAD);
   if (pet.weight > 60) return T(S_CHUBBY);
   if (pet.shiny && pet.ageMinutes < 15) return T(S_IS_SHINY);
+  if (millis() < giftFullUntil) return T(S_GIFT_FULL);
+  uint8_t ev = pet.eventToday();
+  if (ev == EV_BIRTHDAY) return pet.giftReady() ? T(S_GIFT_TAP) : T(S_HAPPY_BDAY);
+  if (ev != EV_NONE) {           // "HALLOWEEN!" -- the sticker's own name
+    static char greet[16];
+    snprintf(greet, sizeof(greet), "%s!", stickerName(ev - 1));
+    return greet;
+  }
   return T(S_HAPPY);
 }
 

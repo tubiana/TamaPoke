@@ -4,6 +4,7 @@
 #include "dex.h"
 #include "trainers.h"   // GYM_REGIONS sizes the badge masks
 #include "party.h"
+#include "calendar.h"
 
 // 1 tick = 1 minuto de juego. Baja este valor para probar mas rapido
 // (p. ej. 5000UL = las estadisticas caen 12x mas rapido).
@@ -48,6 +49,24 @@ enum : uint8_t { SLEEP_NONE = 0, SLEEP_AUTO, SLEEP_PLAYER };
 // live creature up a little.
 #define QUIZ_PER_DAY 10
 #define QUIZ_JOY 5
+
+// Stickers: a collection on the player card, kept forever. The first ten are
+// the calendar events in EV_* order (sticker = ev - 1), earned by having the
+// device on during one; the rest are milestones. APPEND-ONLY: each is a bit in
+// the saved "stkr" mask, so inserting one would move every sticker after it.
+enum : uint8_t {
+  STK_NEWYEAR = 0, STK_VALENTINE, STK_POKEDAY, STK_SPRING, STK_SUMMER,
+  STK_AUTUMN, STK_HALLOWEEN, STK_WINTER, STK_CHRISTMAS, STK_BIRTHDAY,
+  STK_DEX10, STK_DEX50, STK_DEX100, STK_DEX200,   // species in the Pokedex
+  STK_QUIZ10, STK_QUIZ50,                         // right answers, all time
+  STK_SHINY,                                      // a shiny in the Pokedex
+  STK_COUNT
+};
+static_assert(EV_BIRTHDAY - 1 == STK_BIRTHDAY, "a calendar sticker is its event - 1");
+static_assert(STK_COUNT <= 32, "stickers are one bit each in a uint32_t");
+// The birthday present arrives at the live creature's level (never below this),
+// so it grows up alongside rather than starting from nothing.
+#define GIFT_MIN_LEVEL 5
 
 // ceremonias de fin de ciclo
 enum : uint8_t { CER_NONE = 0, CER_FAREWELL, CER_RUNAWAY, CER_RELEASE };
@@ -152,6 +171,23 @@ public:
   // The quiz's daily allowance, counted per RTC day (today()).
   uint8_t quizLeft() const;
   void quizAnswered(bool right);
+  uint16_t quizRight = 0;       // right answers, all time (stickers)
+
+  // The calendar (calendar.h). The birthday is the player's, set in OPTIONS;
+  // 0 = not set. Today's event is EV_NONE without a clock.
+  uint8_t bdayMonth = 0, bdayDay = 0;
+  void setBirthday(uint8_t month, uint8_t day);
+  uint8_t eventToday() const;
+  // The birthday present: waiting all day, once a year, until it is opened.
+  bool giftReady() const;
+  int16_t openGift();           // the species given, or 0 if party and box are full
+
+  uint32_t stickers = 0;        // bit n = sticker n (STK_*)
+  bool hasSticker(uint8_t s) const { return s < STK_COUNT && (stickers >> s) & 1; }
+  uint8_t stickerCount() const;
+  void checkStickers();         // awards whatever has been earned; banner + sound
+  int8_t newSticker = -1;       // the one to announce
+  bool showSticker() const { return newSticker >= 0 && millis() < stickerUntil; }
   // vinculo (del bicho: sube lento con cuidado, se resetea al nacer otro)
   uint8_t bond = 0;
   char nick[12] = "";    // apodo (vacio = nombre de especie)
@@ -483,6 +519,8 @@ private:
   uint8_t neglectTicks = 0;
   uint16_t goodTicks = 0;  // racha bien cuidado: forja la DEF
   uint32_t quizDay = 0;    // the day quizUsed counts for
+  uint16_t giftYear = 0;   // the last year a birthday present was opened
+  uint32_t stickerUntil = 0;
   uint8_t quizUsed = 0;
   // drainPct as a rate, not a rounding: each minute adds drainPct and the needs
   // drop on the minutes it crosses 100. At 100 that is every minute, exactly as

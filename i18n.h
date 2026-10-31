@@ -146,11 +146,19 @@ enum StrId : uint8_t {
   S_QUIZ_DONE,      // the daily allowance is spent
   S_QUIZ_NEXT,      // after an answer: tap for the next one
   S_QUIZ_HEAR,      // tap the silhouette to hear the cry again
+  // stickers, the birthday and its present
+  S_STICKERS,       // the player card page
+  S_NEW_STICKER,    // banner line 1 when one is earned
+  S_BIRTHDAY,       // OPTIONS: the birthday row
+  S_GIFT_TAP,       // status line while the present waits
+  S_GIFT_FULL,      // ...and when party and box have no room for it
+  S_HAPPY_BDAY,     // status line on the birthday once it is opened
   STR_COUNT
 };
 
 const char *T(StrId id);       // texto en el idioma activo
 const char *medalName(int i);  // banner de medalla (MED_COUNT)
+const char *stickerName(int i); // a sticker's name (STK_COUNT), "" out of range
 const char *medalLabel(int i); // etiqueta corta de medalla
 const char *medalDesc(int i);  // descripcion larga de medalla
 
