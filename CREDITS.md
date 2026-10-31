@@ -1,16 +1,24 @@
 # Credits
 
-## The original project
+## Who made TamaPoke
 
-TamaPoke was created by **Quique Tortosa** — [socquique/TamaPoke](https://github.com/socquique/TamaPoke),
-MIT licensed, © 2026. The firmware, the PMD sprite pipeline, the six-language
-UI, the ES8311 audio bring-up and the browser installer are all his work, and
-this repository is a fork that builds on them.
+This repository is the third link of a chain, and each link is someone's work:
 
-Everything added in this fork — the move-based battle system, the gym ladders,
-the party and box, the peer-to-peer link, the save backup, the Game Boy synth
-and the expansion to 386 species — sits on top of that foundation and would not
-exist without it.
+1. **Quique Tortosa** created TamaPoke — [socquique/TamaPoke](https://github.com/socquique/TamaPoke),
+   MIT licensed, © 2026. The firmware, the PMD sprite pipeline, the six-language
+   UI, the ES8311 audio bring-up and the browser installer are all his work.
+2. **Dylan Dao** forked it — [DylanPDao/TamaPoke](https://github.com/DylanPDao/TamaPoke) —
+   and built the move-based battle system, the gym ladders and Elite 4 of every
+   region, the party and box, the peer-to-peer link, the save backup, the Game
+   Boy synth, and the expansion from 151 to 809 species. Most of this
+   repository's history is his.
+3. **Thibault Tubiana** forked Dylan's — [tubiana/TamaPoke](https://github.com/tubiana/TamaPoke) —
+   and added localized species and move names, the cries, kid mode, the daily
+   quiz, calendar events, the birthday present and stickers, the date page, the
+   kids' manual, and the code-drawn gym arenas.
+
+Each layer sits on the ones before it and would not exist without them. All
+three are MIT on the same terms as the original licence.
 
 
 TamaPoke is a **non-commercial, personal-use** project. It does not sell or
