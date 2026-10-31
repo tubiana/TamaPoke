@@ -73,7 +73,8 @@ int main(){
   clearAll(); menuOpen=true;     check("menu");
   clearAll(); partyOpen=true;    check("party");
   clearAll(); clockOpen=true;    check("clock");
-  clearAll(); clockOpen=true; settingsPage=1; check("options");
+  clearAll(); clockOpen=true; settingsPage=1; check("date");
+  clearAll(); clockOpen=true; settingsPage=2; check("options");
   clearAll(); galleryOpen=true; openQuiz();   check("quiz");
   for (uint8_t p=0;p<4;p++){ clearAll(); cardOpen=true; cardPage=p;
     char n[16]; snprintf(n,sizeof(n),"card%u",p); check(n); }

@@ -1,6 +1,7 @@
 #include "audio.h"
 #include "gbsynth.h"
 #include "music.h"
+#include "audio_mix.h"  // the levels and the music stepper, shared with loud_test
 #include "pin_config.h"
 #include <Arduino.h>
 #include <Wire.h>
@@ -139,13 +140,6 @@ static int16_t buf[256 * 2];  // estéreo intercalado (L=R)
 static int16_t mono[256];
 static GbSynth gSyn;
 
-// The SFX tables are written in Hz; the synth speaks the Game Boy's frequency
-// register. Converting here means the cues did not have to be rewritten.
-static uint16_t hzToGb(uint16_t hz) {
-  if (!hz) return 0;
-  int32_t f = 2048 - (int32_t)(131072u / hz);
-  return (f < 0 || f > 2047) ? 0 : (uint16_t)f;
-}
 
 // reproduce un tono (o silencio si f==0) con rampa de ataque/caida anti-click
 static void playTone(uint16_t f, uint16_t ms) {
@@ -212,9 +206,7 @@ static void playPcm(const int8_t *pcm, uint32_t len) {
 
 static void audioTask(void *) {
   AudioMsg msg;
-  // where each music channel has got to, and when its current note ends
-  uint16_t mi1 = 0, mi2 = 0;
-  uint32_t at1 = 0, at2 = 0, clock = 0;
+  MusicCursor cur;   // where each music channel has got to
   uint8_t playing = MUS_NONE;
   bool ampOn = false;
 
@@ -242,14 +234,7 @@ static void audioTask(void *) {
         if (!ampOn) { digitalWrite(PA, HIGH); delay(6); ampOn = true; }
         const SfxDef &d = SFX[id];
         for (uint8_t i = 0; i < d.len; i++) {
-          uint16_t f = hzToGb(d.n[i].f);
-          // percussion for the impact cues, a pulse for everything else
-          if (id == SFX_HIT || id == SFX_FAINT)
-            gSyn.noise(13, -1, 2, d.n[i].ms, (uint16_t)(4 + i * 4));
-          else if (f)
-            gSyn.note(0, f, 1, 14, -1, 4, d.n[i].ms);
-          else
-            gSyn.silence(0);
+          cueNote(gSyn, id, i, hzToGb(d.n[i].f), d.n[i].ms);   // audio_mix.h sets the level
           pump(d.n[i].ms);
         }
       }
@@ -258,41 +243,22 @@ static void audioTask(void *) {
 
     if (m == MUS_NONE) {
       if (ampOn && !gSyn.busy()) { digitalWrite(PA, LOW); ampOn = false; }
-      playing = MUS_NONE; mi1 = mi2 = 0; at1 = at2 = clock = 0;
+      playing = MUS_NONE; cur = MusicCursor();
       continue;
     }
 
-    if (m != playing) { playing = m; mi1 = mi2 = 0; at1 = at2 = clock = 0; }
+    if (m != playing) { playing = m; cur = MusicCursor(); }
     if (!ampOn) { digitalWrite(PA, HIGH); delay(6); ampOn = true; }
 
     // 0 = the gym leader battle, 3 = the victory fanfare. Winning used to play
     // index 2, which is the WILD BATTLE theme -- so a win sounded like the fight
     // had started again.
     const MusicTrack &t = MUSIC_TBL[(m == MUS_VICTORY) ? 3 : 0];
-    // start whichever channel is due
-    if (clock >= at1) {
-      if (mi1 >= t.n1) {                       // loop, or stop a one-shot
-        if (m == MUS_VICTORY) { gMusic = MUS_NONE; continue; }
-        mi1 = 0; at1 = clock;
-      }
-      const MusicNote &n = t.ch1[mi1++];
-      if (n.freq) gSyn.note(0, n.freq, n.duty, n.vol, n.envDir, n.envPeriod, n.ms);
-      else gSyn.silence(0);
-      at1 = clock + n.ms;
-    }
-    if (clock >= at2) {
-      if (mi2 >= t.n2) { mi2 = 0; at2 = clock; }
-      const MusicNote &n = t.ch2[mi2++];
-      if (n.freq) gSyn.note(1, n.freq, n.duty, n.vol, n.envDir, n.envPeriod, n.ms);
-      else gSyn.silence(1);
-      at2 = clock + n.ms;
-    }
-    uint32_t next = (at1 < at2) ? at1 : at2;
-    if (next <= clock) next = clock + 5;
-    uint32_t step = next - clock;
-    if (step > 60) step = 60;                  // stay responsive to an effect
+    // start whichever channel is due (audio_mix.h, which also scales the level)
+    uint32_t step = musicStep(gSyn, t, m != MUS_VICTORY, cur);
+    if (!step) { gMusic = MUS_NONE; continue; }   // a one-shot has finished
     pump(step);
-    clock += step;
+    cur.clock += step;
   }
 }
 

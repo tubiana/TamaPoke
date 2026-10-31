@@ -36,7 +36,7 @@
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
-#define FW_VERSION "3.15"
+#define FW_VERSION "3.17"
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   LCD_CS, LCD_SCLK, LCD_SDIO0, LCD_SDIO1, LCD_SDIO2, LCD_SDIO3);
@@ -157,11 +157,20 @@ char partyBannerName[14] = "";
 #define PARTY_GRID_Y 88
 
 bool clockOpen = false;       // pantalla de ajuste de hora (deslizar abajo)
-// SETTINGS has two pages: 0 is the clock, sound and language; 1 is OPTIONS --
-// kid mode and the needs speed. Paged by a horizontal swipe or a tap on the
-// dots, like every other paged screen (and so it is in swipe_test).
+// SETTINGS has three pages: the clock, sound and language; the DATE; and
+// OPTIONS -- kid mode, the needs speed and the birthday. Paged by a horizontal
+// swipe or a tap on the dots, like every other paged screen (and so it is in
+// swipe_test). The time and the date are one edit: OK on either page applies
+// both, so changing the hour and then the day loses neither.
 uint8_t settingsPage = 0;
-#define SETTINGS_PAGES 2
+#define SET_PAGE_TIME 0
+#define SET_PAGE_DATE 1
+#define SET_PAGE_OPTIONS 2
+#define SETTINGS_PAGES 3
+#define DATE_YEAR_MIN 2024
+#define DATE_YEAR_MAX 2099
+uint16_t dateY = DATE_YEAR_MIN;   // the date being edited, read from the clock by openClock()
+uint8_t dateM = 1, dateD = 1;
 // Kid mode caps the volume here. The cap lives in the sketch, beside the only
 // controls that change the volume, rather than in audio.cpp.
 #define KID_VOL_MAX 5
@@ -174,6 +183,7 @@ int16_t quizAns = 0;
 int16_t quizOpt[3] = { 0, 0, 0 };
 int8_t quizPicked = -1;            // -1 = not answered yet
 uint32_t quizHearAt = 0;
+uint8_t quizGainShown = 0;      // training the day's stars gave, shown until the quiz is left
 #define QUIZ_HEAR_GAP_MS 3000UL    // replaying the cry: not faster than this
 int clockH = 12, clockM = 0;  // hora en edicion
 
@@ -768,6 +778,13 @@ void ensureMon() {
 #define CRY_CARESS_GAP_MS 60000UL    // ...and at most once a minute
 static uint32_t lastCaressCry = 0;
 
+// A creature's own voice where the card has it, else the cue that stood in for
+// it -- never both. A blip and then a cry on one tap is two sounds, and the
+// blip was only ever there because there was no voice.
+void cryOr(int16_t dex, uint8_t sfx) {
+  if (!cryPlay(dex)) sfxPlay(sfx);
+}
+
 bool cryOnCaress(uint32_t now) {
   if (lastCaressCry && now - lastCaressCry < CRY_CARESS_GAP_MS) return false;
   if (random(CRY_CARESS_ODDS)) return false;
@@ -1002,6 +1019,20 @@ void renderPlayerStickers() {
   }
 }
 
+// A five-pointed star, filled: five triangles from the centre.
+void drawStar5(int cx, int cy, int r, uint16_t col) {
+  const float ri = r * 0.42f;
+  for (int k = 0; k < 5; k++) {
+    float a = -1.5708f + k * 1.2566f;            // each outer point, from the top
+    float b1 = a - 0.6283f, b2 = a + 0.6283f;    // the inner corners either side
+    int ox = cx + (int)(r * cosf(a)), oy = cy + (int)(r * sinf(a));
+    gfx->fillTriangle(ox, oy, cx + (int)(ri * cosf(b1)), cy + (int)(ri * sinf(b1)),
+                      cx + (int)(ri * cosf(b2)), cy + (int)(ri * sinf(b2)), col);
+    gfx->fillTriangle(cx, cy, cx + (int)(ri * cosf(b1)), cy + (int)(ri * sinf(b1)),
+                      cx + (int)(ri * cosf(b2)), cy + (int)(ri * sinf(b2)), col);
+  }
+}
+
 // ---------- quiz ----------
 // A random species of `r` that can be drawn. Rejection sampling, bounded: every
 // region is mostly art, and a miss falls back to the region's first species.
@@ -1035,14 +1066,16 @@ void quizNew() {
     quizOpt[i] = d;
   }
   quizPicked = -1;
-  cryPlay(quizAns);
+  cryOr(quizAns, SFX_TAP);
   quizHearAt = millis();
 }
 
 void openQuiz() {
   quizOpen = true;
   quizPicked = -1;
-  if (pet.quizLeft()) quizNew();     // none left: the screen says come back tomorrow
+  quizGainShown = 0;
+  if (pet.quizLeft()) quizNew();     // its cry is the tap's sound
+  else sfxPlay(SFX_TAP);             // none left: the screen says come back tomorrow
 }
 
 #define QUIZ_SIL_Y 150                // centre of the silhouette
@@ -1054,10 +1087,28 @@ void renderQuiz() {
   gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
   if (!pet.quizLeft() && quizPicked < 0) {
+    // the day's score, up to three stars, and what the stars trained
+    char sc[32];
+    snprintf(sc, sizeof(sc), T(S_QUIZ_TODAY_FMT), pet.quizRightToday(), (unsigned)QUIZ_PER_DAY);
+    gfx->setTextColor(UI_INK);
+    gfx->setTextSize(3);
+    gfx->setCursor(CX - (int)strlen(sc) * 9, 110);
+    gfx->print(sc);
+    uint8_t stars = pet.quizStars();
+    for (int i = 0; i < 3; i++)
+      drawStar5(CX - 70 + i * 70, 190, 28, i < stars ? C_YELLOW : UI_TRACK);
     gfx->setTextColor(UI_INK);
     gfx->setTextSize(2);
-    gfx->setCursor(CX - (int)strlen(T(S_QUIZ_DONE)) * 6, 210);
+    gfx->setCursor(CX - (int)strlen(T(S_QUIZ_DONE)) * 6, 256);
     gfx->print(T(S_QUIZ_DONE));
+    if (quizGainShown) {
+      static const StrId NAMES[3] = { S_TR_ATK, S_TR_DEF, S_TR_SPE };
+      char l[32];
+      snprintf(l, sizeof(l), T(S_WIN_TRAIN_FMT), T(NAMES[pet.quizGainWhich % 3]), quizGainShown);
+      gfx->setTextColor(UI_BAR_OK);
+      gfx->setCursor(CX - (int)strlen(l) * 6, 296);
+      gfx->print(l);
+    }
     gfx->flush();
     return;
   }
@@ -1113,9 +1164,8 @@ void renderQuiz() {
 void quizTap(int16_t x, int16_t y) {
   if (!pet.quizLeft() && quizPicked < 0) { quizOpen = false; return; }   // done for today
   if (quizPicked >= 0) {                 // answered: any tap moves on
-    sfxPlay(SFX_TAP);
-    if (pet.quizLeft()) quizNew();
-    else quizPicked = -1;                // that was the last one: say so
+    if (pet.quizLeft()) quizNew();       // the next cry is the tap's sound
+    else { sfxPlay(SFX_TAP); quizPicked = -1; }   // that was the last one: the day's score
     return;
   }
   for (uint8_t i = 0; i < 3; i++) {
@@ -1124,6 +1174,7 @@ void quizTap(int16_t x, int16_t y) {
     quizPicked = (int8_t)i;
     bool right = (quizOpt[i] == quizAns);
     pet.quizAnswered(right);             // spends one of today's, cheers the pet if right
+    if (pet.quizGain) quizGainShown = pet.quizGain;   // the day's stars just paid out
     sfxPlay(right ? SFX_MEDAL : SFX_TAP);  // a wrong answer is not scolded
     return;
   }
@@ -2272,8 +2323,7 @@ void onTap(int16_t x, int16_t y) {
         sfxPlay(SFX_TAP);
       } else if (x >= LANBTN_X && x <= LANBTN_X + LANBTN_W &&
                  y >= LANBTN_Y && y <= LANBTN_Y + LANBTN_H) {
-        sfxPlay(SFX_TAP);       // the QUIZ button, where the gym chooser has LAN
-        openQuiz();
+        openQuiz();             // the QUIZ button, where the gym chooser has LAN
       } else if (y > 380) {
         galleryOpen = false;
       }
@@ -2418,8 +2468,8 @@ void onTap(int16_t x, int16_t y) {
   if (inPetZone(x, y)) {
     pet.caress();
     if (!pet.sleeping) {
-      sfxPlay(SFX_HEART);
-      if (!pet.isEgg() && cryOnCaress(millis())) cryPlay(pet.speciesId);
+      if (!pet.isEgg() && cryOnCaress(millis())) cryOr(pet.speciesId, SFX_HEART);
+      else sfxPlay(SFX_HEART);
     }
   }
 }
@@ -3250,7 +3300,11 @@ void openClock() {
   uint32_t e = pet.lastSeenEpoch ? pet.lastSeenEpoch : rtcEpoch();
   clockH = (e / 3600) % 24;
   clockM = (e / 60) % 60;
-  settingsPage = 0;
+  CalDate c = calFromDays(e / 86400);
+  dateY = c.year < DATE_YEAR_MIN ? DATE_YEAR_MIN : (c.year > DATE_YEAR_MAX ? DATE_YEAR_MAX : c.year);
+  dateM = c.month;
+  dateD = c.day;
+  settingsPage = SET_PAGE_TIME;
   clockOpen = true;
 }
 
@@ -3259,7 +3313,7 @@ void openClock() {
 #define SET_DOTS_Y 22
 static void drawSettingsDots() {
   for (uint8_t d = 0; d < SETTINGS_PAGES; d++) {
-    int cx = CX - 8 + d * 16;
+    int cx = CX - (SETTINGS_PAGES - 1) * 8 + d * 16;
     if (d == settingsPage) gfx->fillCircle(cx, SET_DOTS_Y, 5, UI_INK);
     else gfx->drawCircle(cx, SET_DOTS_Y, 5, UI_TRACK);
   }
@@ -3391,9 +3445,11 @@ void optionsTap(int16_t x, int16_t y) {
   }
 }
 
+// Sets the RTC to the date and time being edited. setClock() moves the clock
+// WITHOUT applying the gap as time away, so jumping the date months ahead on a
+// board that never had one does not starve the creature.
 void applyClock() {
-  uint32_t base = pet.lastSeenEpoch ? pet.lastSeenEpoch : rtcEpoch();
-  uint32_t e = (base / 86400) * 86400 + (uint32_t)clockH * 3600 + (uint32_t)clockM * 60;
+  uint32_t e = calToDays(dateY, dateM, dateD) * 86400UL + (uint32_t)clockH * 3600 + (uint32_t)clockM * 60;
   rtcSetEpoch(e);
   pet.setClock(e);
   clockOpen = false;
@@ -3420,8 +3476,102 @@ void drawClockBtn(int x, int y, const char *l) {
 #define VOL_BTN_W 48
 static const char *const LANG_CODES[LANG_COUNT] = { "ES", "EN", "FR", "DE", "IT", "PT" };
 
+// OK and the cancel hint, shared by the time and date pages; OK applies both
+#define CLOCK_OK_X 133
+#define CLOCK_OK_Y 340
+#define CLOCK_OK_W 200
+#define CLOCK_OK_H 48
+static void drawClockOk() {
+  gfx->fillRoundRect(CLOCK_OK_X, CLOCK_OK_Y, CLOCK_OK_W, CLOCK_OK_H, 14, UI_BAR_OK);
+  gfx->setTextColor(UI_BG_DAY);
+  gfx->setTextSize(3);
+  gfx->setCursor(CX - 18, CLOCK_OK_Y + 12);
+  gfx->print("OK");
+  gfx->setTextColor(UI_TRACK);
+  gfx->setTextSize(2);
+  gfx->setCursor(CX - strlen(T(S_CLOCK_CANCEL)) * 6, 410);
+  gfx->print(T(S_CLOCK_CANCEL));
+}
+static bool clockOkHit(int16_t x, int16_t y) {
+  return y >= CLOCK_OK_Y && y <= CLOCK_OK_Y + CLOCK_OK_H && x >= CLOCK_OK_X && x <= CLOCK_OK_X + CLOCK_OK_W;
+}
+
+// The DATE page: day, month and year, each a column with + above and - below.
+#define DATE_PLUS_Y 110
+#define DATE_VAL_Y 186
+#define DATE_MINUS_Y 232
+#define DATE_BTN 58
+static const int DATE_COL_X[3] = { 113, 233, 353 };   // centres: day, month, year
+void renderDate() {
+  gfx->fillScreen(RGB565_BLACK);
+  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawSettingsDots();
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(3);
+  gfx->setCursor(CX - strlen(T(S_SET_DATE)) * 9, 44);
+  gfx->print(T(S_SET_DATE));
+
+  char v[3][6];
+  snprintf(v[0], sizeof(v[0]), "%02u", dateD);
+  snprintf(v[1], sizeof(v[1]), "%02u", dateM);
+  snprintf(v[2], sizeof(v[2]), "%u", dateY);
+  const StrId lbl[3] = { S_DAY, S_MONTH, S_YEAR };
+  for (int i = 0; i < 3; i++) {
+    int cx = DATE_COL_X[i];
+    drawClockBtn(cx - DATE_BTN / 2, DATE_PLUS_Y, "+");
+    drawClockBtn(cx - DATE_BTN / 2, DATE_MINUS_Y, "-");
+    gfx->setTextColor(UI_INK);
+    gfx->setTextSize(4);
+    gfx->setCursor(cx - (int)strlen(v[i]) * 12, DATE_VAL_Y);
+    gfx->print(v[i]);
+    gfx->setTextColor(UI_TRACK);
+    gfx->setTextSize(2);
+    gfx->setCursor(cx - (int)strlen(T(lbl[i])) * 6, DATE_MINUS_Y + DATE_BTN + 10);
+    gfx->print(T(lbl[i]));
+  }
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(4);
+  for (int i = 0; i < 2; i++) {   // each slash centred in the gap, not between centres
+    int gap = (DATE_COL_X[i] + (int)strlen(v[i]) * 12 + DATE_COL_X[i + 1] - (int)strlen(v[i + 1]) * 12) / 2;
+    gfx->setCursor(gap - 12, DATE_VAL_Y);
+    gfx->print("/");
+  }
+  drawClockOk();
+  gfx->flush();
+}
+
+// One step of a column. Day wraps within the month; changing the month or the
+// year pulls the day back inside it (31 Jan -> Feb is 28 or 29, never 3 Mar).
+void dateStep(int col, int dir) {
+  if (col == 0) {
+    uint8_t n = calMonthDays(dateM, dateY);
+    dateD = dir > 0 ? (dateD >= n ? 1 : dateD + 1) : (dateD <= 1 ? n : dateD - 1);
+    return;
+  }
+  if (col == 1) dateM = dir > 0 ? (dateM >= 12 ? 1 : dateM + 1) : (dateM <= 1 ? 12 : dateM - 1);
+  else if (dir > 0 ? dateY < DATE_YEAR_MAX : dateY > DATE_YEAR_MIN) dateY += dir > 0 ? 1 : -1;
+  uint8_t n = calMonthDays(dateM, dateY);
+  if (dateD > n) dateD = n;
+}
+
+void dateTap(int16_t x, int16_t y) {
+  int dir = (y >= DATE_PLUS_Y - 6 && y <= DATE_PLUS_Y + DATE_BTN + 6) ? 1
+          : (y >= DATE_MINUS_Y - 6 && y <= DATE_MINUS_Y + DATE_BTN + 6) ? -1 : 0;
+  if (dir) {
+    for (int i = 0; i < 3; i++)
+      if (x >= DATE_COL_X[i] - DATE_BTN / 2 - 6 && x <= DATE_COL_X[i] + DATE_BTN / 2 + 6) {
+        dateStep(i, dir);
+        sfxPlay(SFX_TAP);
+        return;
+      }
+    return;
+  }
+  if (clockOkHit(x, y)) applyClock();
+}
+
 void renderClock() {
-  if (settingsPage == 1) { renderOptions(); return; }
+  if (settingsPage == SET_PAGE_OPTIONS) { renderOptions(); return; }
+  if (settingsPage == SET_PAGE_DATE) { renderDate(); return; }
   gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
   drawSettingsDots();
@@ -3493,16 +3643,7 @@ void renderClock() {
   gfx->setCursor(LANG_PILL_X + (LANG_PILL_W - (int)strlen(lp) * 12) / 2, LANG_PILL_Y + 8);
   gfx->print(lp);
 
-  gfx->fillRoundRect(133, 340, 200, 48, 14, UI_BAR_OK);
-  gfx->setTextColor(UI_BG_DAY);
-  gfx->setTextSize(3);
-  gfx->setCursor(CX - 18, 352);
-  gfx->print("OK");
-
-  gfx->setTextColor(UI_TRACK);
-  gfx->setTextSize(2);
-  gfx->setCursor(CX - strlen(T(S_CLOCK_CANCEL)) * 6, 410);
-  gfx->print(T(S_CLOCK_CANCEL));
+  drawClockOk();
 
   // version del firmware (discreta, abajo del todo)
   char ver[20];
@@ -3519,7 +3660,8 @@ void clockTap(int16_t x, int16_t y) {
     sfxPlay(SFX_TAP);
     return;
   }
-  if (settingsPage == 1) { optionsTap(x, y); return; }
+  if (settingsPage == SET_PAGE_OPTIONS) { optionsTap(x, y); return; }
+  if (settingsPage == SET_PAGE_DATE) { dateTap(x, y); return; }
   if (y >= 190 && y <= 248) {  // fila de botones +/-
     if (x >= 104 && x < 162) clockH = (clockH + 23) % 24;
     else if (x >= 170 && x < 228) clockH = (clockH + 1) % 24;
@@ -3549,7 +3691,7 @@ void clockTap(int16_t x, int16_t y) {
       return;
     }
   }
-  if (y >= 340 && y <= 388 && x >= 133 && x <= 333) { applyClock(); return; }
+  if (clockOkHit(x, y)) { applyClock(); return; }
 }
 
 // llama + numero de racha arriba a la izquierda
@@ -6305,6 +6447,9 @@ void galleryTap(int16_t x, int16_t y) {
   if (dex > GAL_HI || dex > DEX_COUNT) return;
   galleryDetail = dex;
   galleryPmd.load(dex, pet.isShinyRegistered(dex));
+  // only one you have met: an unknown one stays a silhouette, silent too, and
+  // the quiz keeps the job of putting a cry to a shadow
+  if (pet.isRegistered(dex)) cryOr(dex, SFX_TAP);
 }
 
 void drawBattery() {

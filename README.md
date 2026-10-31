@@ -3,7 +3,7 @@
 [![Flash in browser](https://img.shields.io/badge/flash-in%20browser-FF6B00?logo=googlechrome&logoColor=white)](https://dylanpdao.github.io/TamaPoke/web/)
 [![MakerWorld](https://img.shields.io/badge/MakerWorld-3D%20case-00AE42?logo=bambulab&logoColor=white)](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)
 ![Board](https://img.shields.io/badge/board-ESP32--S3%20round%20AMOLED-E7352C?logo=espressif&logoColor=white)
-![Firmware](https://img.shields.io/badge/firmware-v3.15-8A2BE2)
+![Firmware](https://img.shields.io/badge/firmware-v3.17-8A2BE2)
 ![Code](https://img.shields.io/badge/code-MIT-blue)
 ![Languages](https://img.shields.io/badge/languages-6-FFCB05)
 [![Stars](https://img.shields.io/github/stars/DylanPDao/TamaPoke?style=flat&logo=github&color=yellow)](https://github.com/DylanPDao/TamaPoke/stargazers)
@@ -139,7 +139,7 @@ While **awake**, per minute:
 - ~**15 %/min** chance to poop (only if FOOD > 40). Poops tank hygiene fast.
 - **Care slip-up** = letting any stat hit **≤ 10** (60-min cooldown so it counts once).
   Each slip-up **delays evolution by 1 level** and cools the bond by 1.
-- **Needs speed** (SETTINGS, swipe left to OPTIONS): **25 / 50 / 75 / 100 %**,
+- **Needs speed** (SETTINGS, the third page, OPTIONS): **25 / 50 / 75 / 100 %**,
   default 100. It scales every drain on this page -- awake, asleep and while
   switched off: at 50 % the needs fall on every other minute. Ageing and
   levelling are untouched.
@@ -163,7 +163,10 @@ While **awake**, per minute:
 - 👆 **Pet it:** +5 JOY + bond.
 - ❓ **Quiz** (the button on the Pokédex region chooser): a silhouette and its
   cry, three names. **10 a day**, reset at midnight by the RTC; a right answer
-  gives the live creature **+5 JOY**.
+  gives the live creature **+5 JOY**. The tenth answer scores the day in
+  **stars -- 1 at 5 right, 2 at 8, 3 for all 10** -- and each star trains the
+  live creature by **2 points** in a stat that still has room (the same rule as
+  a gym win's reward, never past the IV ceiling).
 - 🌙 **Sleep:** rest — ENE **+6/min**, needs drain ~**4× slower** with floors
   (FOOD 30 / JOY 35 / HYG 45). No poops, no slip-ups, can't run away while asleep.
   **Screen off + between midnight and 06:00 puts it to sleep**, and it stays
@@ -175,7 +178,13 @@ While **awake**, per minute:
   button beats both: a creature you sent to bed stays there.
 
 ### Calendar, birthday and stickers
-The RTC's date drives a few days in the year (`calendar.h`). While one lasts the
+The RTC's date drives a few days in the year (`calendar.h`). **Set it first**:
+SETTINGS' second page is the DATE (day / month / year, OK applies the time and
+the date together). A board whose clock was never set starts on 1 January 2026,
+so until then no event or birthday falls on the real day. Moving the date is not
+time away -- nothing drains -- but a daily streak restarts at 1.
+
+While one lasts the
 main screen is decorated, the status line greets it, **half the eggs rolled lean
 to its type** (only within the rarity tier already rolled, so a lean never
 downgrades an egg), and having the device on earns its sticker.
@@ -509,7 +518,7 @@ If one bottoms out it counts as a *slip-up*.
 - Vertical swipe up = open the **stat card** (4 pages: Profile / Battle / Medals /
   Progress; swipe between them; tap the name on Profile to rename; on Battle the
   "Train strength" button opens the bag).
-- Swipe down = **set the clock** and pick the **language** + sound on/off.
+- **SETTINGS** = **set the clock** (time, then date) and pick the **language** + sound on/off.
 - Long press (3 s) on the creature = **release** dialog.
 
 **Physical PWR button:** short = screen on/off · long (4 s) = full power-off
@@ -683,10 +692,19 @@ Portuguese, Spanish and Italian keep the English names, as their games do.
 hatches, when an evolution is revealed, when it leaves (farewell, running away,
 release) and when it steps into a fight. A caress makes it cry only sometimes --
 one in six, and never twice within a minute -- because this is a toy a child
-holds. Nothing cries while the screen is off. A new device starts at
+holds. Opening a species you have registered in the Pokédex plays its cry too
+(an unmet one stays silent, like its silhouette). **A cry replaces the beep it
+would have come with** -- one touch is one sound -- and with no cries pack the
+beeps are all there is. Nothing cries while the screen is off. A new device starts at
 **volume 3** of 10. Build the pack with
 `python tools/pack_cries.py` (needs `pip install soundfile numpy`) and send it from
 the installer's 🔊 button; see CREDITS.md for why it is not committed.
+
+**Sound levels** (`audio_mix.h`): a UI beep is one voice at 14 of 15. The battle
+music plays at **60 %** of the track's own volume, so its two voices together
+peak no higher than one beep; a move's cue plays at **10** and the hit / faint
+noise at **9**, because they land on top of the music. `loud_test` measures it:
+at the track's own volume a fight peaked 1.6x louder than anything else.
 
 ## Backgrounds: biome + real time
 

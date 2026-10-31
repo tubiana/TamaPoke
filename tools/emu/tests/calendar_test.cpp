@@ -52,6 +52,15 @@ int main(){
     }
     ck(broken == 0, "forty years of days follow one another, leap years included");
   }
+  {
+    // calToDays is the inverse, over the same forty years
+    int off = 0;
+    for (uint32_t d = 0; d < 40u * 366; d++) {
+      CalDate c = calFromDays(d);
+      off += calToDays(c.year, c.month, c.day) != d;
+    }
+    ck(off == 0 && calToDays(2026, 10, 31) == D_2026_10_31, "a date turns back into the same day number");
+  }
 
   // ---- which event, when ----
   ck(calEventOn(calFromDays(D_2026_10_31),0,0) == EV_HALLOWEEN, "31 Oct is Halloween");

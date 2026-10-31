@@ -48,7 +48,7 @@ int main(){
   pet.setClock(noonOf(D_2026_07_14));
 
   // ---- OPTIONS: set the birthday to 14 July by taps alone ----
-  openClock(); settingsPage = 1;
+  openClock(); settingsPage = 2;   // OPTIONS
   ck(pet.bdayMonth == 0, "no birthday to begin with");
   onTap(BD_DAY_PLUS_X, BD_Y);
   ck(pet.bdayMonth == 1 && pet.bdayDay == 1, "the first + starts it at 1/1");
