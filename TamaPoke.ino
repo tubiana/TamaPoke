@@ -37,7 +37,7 @@
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
-#define FW_VERSION "3.18"
+#define FW_VERSION "3.19"
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   LCD_CS, LCD_SCLK, LCD_SDIO0, LCD_SDIO1, LCD_SDIO2, LCD_SDIO3);
@@ -373,6 +373,7 @@ static void btlSwitchTo(uint8_t i);
 static void btlResolve(uint8_t yourMove);
 static void btlAfterTurn();
 static void btlBegin();
+static void btlAwardXp();
 // The peer's whole team, kept live. A trainer's replacements are built fresh
 // from TRAINERS[] because they only ever arrive once; a linked opponent can
 // switch OUT and back IN, so its creatures have to remember how battered they
@@ -513,6 +514,12 @@ uint8_t btlWildPlace = 0;
 PartyMon btlWildMon;
 bool btlCaught = false;      // set by the ball; the explore screen keeps it
 uint32_t btlBallUntil = 0;   // the caught ball rocks until then
+// Experience: which party slot each squad member came from (-1 = the live
+// creature, which grows by age instead), who has been out at least once, and
+// which foe has already paid out, so a knockout counts once.
+int8_t btlSquadSlot[TRAINER_TEAM_MAX];
+uint8_t btlFought = 0;
+uint8_t btlXpPaid = 0;       // btlFoeAt + 1 of the last foe that paid
 bool btlHard = false;
 Combatant btlSquad[TRAINER_TEAM_MAX + 1];
 uint8_t btlSquadN = 0, btlSquadAt = 0;
@@ -1760,7 +1767,7 @@ void onSwipeV(int dir) {
 // The detail sheet, shared by the party and the box so the two cannot drift.
 // `fromBox` picks which action the LEFT button offers; the right one is always
 // RELEASE, which is irreversible and therefore always asks first.
-void renderMonSheet(const PartyMon &m, bool fromBox) {
+void renderMonSheet(const PartyMon &m, bool fromBox, uint16_t xp) {
   const DexEntry &d = DEX_TBL[m.dex];
   gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
@@ -1789,6 +1796,15 @@ void renderMonSheet(const PartyMon &m, bool fromBox) {
   gfx->setTextSize(1);
   gfx->setCursor(CX - (int)strlen(st) * 3, 300);
   gfx->print(st);
+  // Experience toward the next level, or MAX at the player's own ceiling.
+  {
+    char xl[24];
+    if (m.level >= pet.xpCap()) snprintf(xl, sizeof(xl), "XP MAX");
+    else snprintf(xl, sizeof(xl), "XP %u/%u", (unsigned)xp, (unsigned)Party::xpToNext(m.level));
+    gfx->setTextColor(0x8410);
+    gfx->setCursor(CX - (int)strlen(xl) * 3, 288);
+    gfx->print(xl);
+  }
 
   // Bringing one back is only offered while an egg is waiting. Otherwise it
   // would silently destroy whatever creature is currently alive, and a rule the
@@ -1857,7 +1873,7 @@ void renderPartyDetail() {
     renderParty();
     return;
   }
-  renderMonSheet(party.slots[partyDetail - 1], false);
+  renderMonSheet(party.slots[partyDetail - 1], false, party.xp[partyDetail - 1]);
 }
 
 void renderBoxDetail() {
@@ -1867,7 +1883,7 @@ void renderBoxDetail() {
     renderBox();
     return;
   }
-  renderMonSheet(party.box[boxDetail - 1], true);
+  renderMonSheet(party.box[boxDetail - 1], true, party.boxXp[boxDetail - 1]);
 }
 
 // The two buttons' hit areas, so a test can prove they do not overlap without
@@ -4187,11 +4203,14 @@ static void buildSquad(uint8_t maxLvl, uint8_t maxCount, uint16_t mask) {
   btlSquadN = 0;
   btlSquadAt = 0;
   btlPetIn = false;
+  btlFought = 0;
+  btlXpPaid = 0;
   if (maxCount > TRAINER_TEAM_MAX) maxCount = TRAINER_TEAM_MAX;
   if (!pet.isEgg() && btlSquadN < maxCount && (mask & 1)) {
     Pet tmp = pet;                       // a copy: the real pet is untouched
     if (maxLvl && tmp.level() > maxLvl)
       tmp.ageMinutes = (uint32_t)(maxLvl - 1) * MINUTES_PER_LEVEL;
+    btlSquadSlot[btlSquadN] = -1;
     combatantFromPet(btlSquad[btlSquadN++], tmp);
     btlPetIn = true;      // the training reward goes to whoever fought for it
   }
@@ -4199,6 +4218,7 @@ static void buildSquad(uint8_t maxLvl, uint8_t maxCount, uint16_t mask) {
     if (party.slots[i].empty() || !(mask & (1 << (i + 1)))) continue;
     PartyMon m = party.slots[i];
     if (maxLvl && m.level > maxLvl) m.level = maxLvl;
+    btlSquadSlot[btlSquadN] = (int8_t)i;
     combatantFromParty(btlSquad[btlSquadN++], m);
   }
   if (btlSquadN) btlYou = btlSquad[0];
@@ -4515,12 +4535,14 @@ static void btlResolve(uint8_t yourMove) {
 // a move turn obeys.
 static void btlAfterTurn() {
   TurnLog lg;
+  btlFought |= (uint8_t)(1u << btlSquadAt);   // whoever is out has fought
   if (!btlYou.fainted() && !btlFoe.fainted()) {
     battleEndTurn(btlYou, lg);
     if (lg.damage) btlNarrate(btlYou, btlYou, lg);
     battleEndTurn(btlFoe, lg);
     if (lg.damage) btlNarrate(btlFoe, btlFoe, lg);
   }
+  if (btlFoe.fainted()) btlAwardXp();
   // Someone went down. The replacement is NOT swapped in here -- that made the
   // change instant and read as a jump cut. Flag it, let the sprite drop out of
   // frame, and swap when the player dismisses the message.
@@ -4966,6 +4988,30 @@ static bool btlBackTap(int16_t x, int16_t y) {
 // Running. A gym leader keeps their badge and the fight simply ends; against
 // another device the peer is told, so it does not sit waiting for a move that
 // will never come.
+// Experience for a foe that went down (or into a ball), once per foe. All six
+// of the party take a share -- the full one if they were out at any point in
+// this fight, XP_BENCH_PCT of it if not -- up to the level the player has
+// raised a creature to. The live creature is skipped: its level is its age.
+// Nothing over the radio: a LAN fight is between friends, not a farm.
+static void btlAwardXp() {
+  if (btlLink || btlXpPaid == btlFoeAt + 1) return;
+  btlXpPaid = btlFoeAt + 1;
+  uint16_t full = Party::xpForFoe(btlFoe.level, btlTrainer >= 0);
+  uint8_t cap = pet.xpCap();
+  for (uint8_t s = 0; s < PARTY_SLOTS; s++) {
+    if (party.slots[s].empty()) continue;
+    bool fought = false;
+    for (uint8_t k = 0; k < btlSquadN; k++)
+      if (btlSquadSlot[k] == (int8_t)s && ((btlFought >> k) & 1)) fought = true;
+    uint16_t amt = fought ? full : (uint16_t)(full * XP_BENCH_PCT / 100);
+    const char *nm = party.slots[s].nick[0] ? party.slots[s].nick : nullptr;
+    XpResult r = party.gainXp(s, amt, cap);
+    const PartyMon &m = party.slots[s];
+    if (r.levels) btlSay(T(S_GREW_FMT), nm ? nm : dexName(r.evolvedFrom ? r.evolvedFrom : m.dex), (unsigned)m.level);
+    if (r.evolvedFrom) btlSay(T(S_EVOLVED_FMT), nm ? nm : dexName(r.evolvedFrom), dexName(m.dex));
+  }
+}
+
 // The ball. It holds or it does not (catchChancePct: rarer and healthier is
 // harder); if it does not, the throw WAS the turn and the foe acts alone.
 static void btlThrowBall() {
@@ -4975,6 +5021,8 @@ static void btlThrowBall() {
     btlCaught = true;
     btlOver = true;
     btlWon = true;
+    btlFought |= (uint8_t)(1u << btlSquadAt);
+    btlAwardXp();                      // a catch is worth what a knockout is
     btlBallUntil = now + 1500;
     audioMusic(MUS_VICTORY);
     sfxPlay(SFX_VICTORY);

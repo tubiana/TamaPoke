@@ -74,14 +74,44 @@ void Party::begin() {
     if (s.dex < 1 || s.dex > DEX_COUNT) s.dex = 0;
     s.nick[sizeof(s.nick) - 1] = 0;
   }
+  // Experience: absent on every save made before it existed, which reads as
+  // zero -- nobody had any. A blob of another length is ignored the same way.
+  for (auto &v : xp) v = 0;
+  for (auto &v : boxXp) v = 0;
+  if (prefs.getBytesLength("pxp") == sizeof(xp)) prefs.getBytes("pxp", xp, sizeof(xp));
+  if (prefs.getBytesLength("bxp") == sizeof(boxXp)) prefs.getBytes("bxp", boxXp, sizeof(boxXp));
+  for (int i = 0; i < PARTY_SLOTS; i++) if (slots[i].empty()) xp[i] = 0;
+  for (int i = 0; i < BOX_SLOTS; i++) if (box[i].empty()) boxXp[i] = 0;
+}
+
+XpResult Party::gainXp(uint8_t i, uint16_t amount, uint16_t cap) {
+  XpResult r;
+  if (i >= PARTY_SLOTS || slots[i].empty()) return r;
+  PartyMon &m = slots[i];
+  if (m.level >= cap) { xp[i] = 0; return r; }
+  uint32_t have = (uint32_t)xp[i] + amount;
+  while (m.level < cap && have >= xpToNext(m.level)) {
+    have -= xpToNext(m.level);
+    m.level++;
+    r.levels++;
+  }
+  xp[i] = m.level >= cap ? 0 : (uint16_t)have;
+  if (r.levels) {
+    int16_t to = evolutionAt(m.dex, m.level);
+    if (to) { r.evolvedFrom = m.dex; m.dex = to; }
+  }
+  save();
+  return r;
 }
 
 void Party::save() {
   prefs.putBytes("party", slots, sizeof(slots));
+  prefs.putBytes("pxp", xp, sizeof(xp));
 }
 
 void Party::boxSave() {
   prefs.putBytes("box", box, sizeof(box));
+  prefs.putBytes("bxp", boxXp, sizeof(boxXp));
 }
 
 uint8_t Party::boxCount() const {
@@ -101,6 +131,7 @@ bool Party::boxAdd(const PartyMon &m) {
   int i = boxFirstFree();
   if (i < 0) return false;
   box[i] = m;
+  boxXp[i] = 0;
   boxSave();
   return true;
 }
@@ -108,6 +139,7 @@ bool Party::boxAdd(const PartyMon &m) {
 void Party::boxReleaseAt(uint8_t i) {
   if (i >= BOX_SLOTS) return;
   box[i] = PartyMon();
+  boxXp[i] = 0;
   boxSave();
 }
 
@@ -116,6 +148,9 @@ void Party::swapPartyBox(uint8_t partyIdx, uint8_t boxIdx) {
   PartyMon t = slots[partyIdx];
   slots[partyIdx] = box[boxIdx];
   box[boxIdx] = t;
+  uint16_t tx = xp[partyIdx];          // the experience travels with its creature
+  xp[partyIdx] = boxXp[boxIdx];
+  boxXp[boxIdx] = tx;
   save();
   boxSave();
 }
@@ -137,6 +172,7 @@ bool Party::add(const PartyMon &m) {
   int i = firstFree();
   if (i < 0) return false;
   slots[i] = m;
+  xp[i] = 0;
   save();
   return true;
 }
@@ -144,12 +180,14 @@ bool Party::add(const PartyMon &m) {
 void Party::replaceAt(uint8_t i, const PartyMon &m) {
   if (i >= PARTY_SLOTS) return;
   slots[i] = m;
+  xp[i] = 0;
   save();
 }
 
 void Party::releaseAt(uint8_t i) {
   if (i >= PARTY_SLOTS) return;
   slots[i] = PartyMon();
+  xp[i] = 0;
   save();
 }
 

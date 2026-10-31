@@ -193,6 +193,7 @@ void Pet::tick() {
                             // los 3 min con la especie sorteada y se perderia la
                             // eleccion del jugador
   if (!frozen) ageMinutes++;   // a revived companion does not age
+  if (!isEgg() && !frozen && level() > bestLevel) bestLevel = level();
   expGain(sleeping ? EXP_SLEEP_RATE : 1);   // the explore bar: player-wide, egg or not
 
   if (isEgg()) {
@@ -431,6 +432,20 @@ int16_t Pet::openGift() {
   return pick;
 }
 
+int16_t evolutionAt(int16_t dex, uint16_t level) {
+  if (dex < 1 || dex > DEX_COUNT) return 0;
+  const DexEntry &e = DEX_TBL[dex];
+  if (!e.evolvesTo || !e.evolveLevel || level < e.evolveLevel) return 0;
+  if (dex == DEX_EEVEE) {
+    int16_t o[EEVEE_EVO_COUNT];
+    uint8_t n = eeveeBranches(o);
+    return n ? o[random(n)] : 0;
+  }
+  int16_t to = (int16_t)e.evolvesTo;
+  if (to > DEX_COUNT || !speciesHasArt(to) || !regionAvailable(regionOfDex(to))) return 0;
+  return to;
+}
+
 bool makeMon(int16_t dex, uint16_t lvl, bool shiny, PartyMon &m) {
   if (dex < 1 || dex > DEX_COUNT) return false;
   if (lvl < 1) lvl = 1;
@@ -649,7 +664,10 @@ bool Pet::lineHasUnregistered(int16_t base) const {
   return false;
 }
 
-uint8_t Pet::eeveeOptions(int16_t *out) const {
+uint8_t Pet::eeveeOptions(int16_t *out) const { return eeveeBranches(out); }
+
+// THE answer for Eevee, for the live creature and a banked one alike.
+uint8_t eeveeBranches(int16_t *out) {
   uint8_t n = 0;
   for (uint8_t i = 0; i < EEVEE_EVO_COUNT; i++) {
     int16_t b = EEVEE_EVOS[i];
@@ -1613,6 +1631,7 @@ void Pet::save() {
   prefs.putUShort("gyr", giftYear);
   prefs.putUInt("stkr", stickers);
   prefs.putUChar("exn", expN);
+  prefs.putUChar("bstlv", bestLevel);
   prefs.putUShort("exa", expAcc);
   prefs.putBytes("dxsn", dexSeen, sizeof(dexSeen));
   prefs.putUChar("bond", bond);
@@ -1694,6 +1713,16 @@ void Pet::load() {
   giftYear = prefs.getUShort("gyr", 0);
   stickers = prefs.getUInt("stkr", 0);
   expN = prefs.getUChar("exn", EXP_MAX);
+  if (prefs.isKey("bstlv")) {
+    bestLevel = prefs.getUChar("bstlv", 0);
+  } else {
+    // A save from before experience: the best so far is whatever the player
+    // already raised -- the live creature and everyone they banked. The party
+    // is loaded before the pet (setup()), so it is there to ask.
+    bestLevel = 0;
+    for (auto &m : party.slots) if (!m.empty() && m.level > bestLevel) bestLevel = (uint8_t)m.level;
+    for (auto &m : party.box) if (!m.empty() && m.level > bestLevel) bestLevel = (uint8_t)m.level;
+  }
   if (expN > EXP_MAX) expN = EXP_MAX;
   expAcc = prefs.getUShort("exa", 0);
   if (expAcc >= EXP_CHARGE_UNITS) expAcc = 0;
@@ -1739,4 +1768,5 @@ void Pet::load() {
   checkLearnGates();
   // siembra: la mascota actual cuenta como criada (guardados antiguos)
   if (speciesId >= 1) registerSpecies(speciesId);
+  if (!isEgg() && !frozen && level() > bestLevel) bestLevel = level();
 }

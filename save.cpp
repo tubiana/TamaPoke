@@ -34,6 +34,7 @@ const SaveField SAVE_FIELDS[] = {
   { "qok", SK_U16 },    { "bdm", SK_U8 },     { "bdd", SK_U8 },     { "gyr", SK_U16 },
   { "stkr", SK_U32 },   { "qtr", SK_U8 },
   { "exn", SK_U8 },     { "exa", SK_U16 },    { "dxsn", SK_BYTES },
+  { "pxp", SK_BYTES },  { "bxp", SK_BYTES },  { "bstlv", SK_U8 },
   // the banked creatures
   { "party", SK_BYTES }, { "box", SK_BYTES },
   // settings, so a restored device plays the way it did

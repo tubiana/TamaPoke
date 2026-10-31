@@ -13,7 +13,8 @@ Personal, non-commercial fan project. Code MIT; sprites CC BY-NC (PMD SpriteColl
 | `species.h` / `dex.h` | The 151: names, typings, evolution chains, base stats, rarity tiers, favourite berry |
 | `dex_names.h` / `move_names.h` | GENERATED (`tools/gen_dex_names.py`, `gen_move_names.py`): species names per UI language. Read ONLY through `dexName()` / `moveName()`; the tables' own `.name` is the canonical English for the console, the LAN wire and tests, and `dexname_test` fails if a screen prints it |
 | `types.h` | Type-effectiveness helpers over the generated 18x18 chart in `dex.h` |
-| `party.cpp/.h` | The 6 retired pets banked by farewell/release (not runaway) |
+| `party.cpp/.h` | The 6 retired pets banked by farewell/release (not runaway), the 18-slot box, and their EXPERIENCE (`gainXp`, kept in `xp[]`/`boxXp[]` under their own NVS keys, never inside `PartyMon`) |
+| `dexbox.cpp/.h` | The Pokedex box: one creature per species, a FILE on the board's FAT partition (809 records do not fit the 20 KB NVS, and a full NVS fails every save). Same stdio code on the board (`/ffat/`) and in the emulator |
 | `calendar.h` | Dates from the RTC, the calendar events and their egg types; pure, so `calendar_test` sweeps whole years |
 | `i18n.cpp/.h` | 6-language string table (ES/EN/FR/DE/IT/PT) |
 | `audio.cpp/.h` | ES8311 codec over I2S |
@@ -301,10 +302,30 @@ Elite 4 on two difficulties. The old line here ("resolution by ATK/DEF/SPD,
 battle style not yet chosen") described a design that was superseded and is kept
 only in the § "Battle system" note explaining why.
 
-What is left is the 24-48 h soak test on `HEALTH`, and **wild encounters**, which
-were never built: there is no way to meet a creature outside a gym. That is the
-one substantial piece of unimplemented game left, and it now has nowhere obvious
-to live -- every gesture from the main screen is taken (see below).
+What is left is the 24-48 h soak test on `HEALTH`. **Wild encounters are
+built** (v3.19): the menu's EXPLORE row, a map of eight places, hiding spots, a
+wild fight with a BALL, and the Pokedex box -- see "Exploring" below. They live
+in a menu row because every gesture from the main screen is taken.
+
+### Exploring (v3.19) -- the parts that must stay one answer
+
+- `placeHas()` decides who lives where; the roll, the map's greyed pins and the
+  tests all ask it. `wildCandidate()` is the art/pack/legendary gate. Neither
+  may be restated.
+- `makeMon()` is the ONE place a whole creature is built (the birthday present
+  and every wild one). The wild creature is built BEFORE its fight and fought as
+  that record, so the one caught is the one fought -- `explore_test` fails if
+  the catch is re-rolled afterwards.
+- `btlAfterTurn()` is the end of every turn, a move turn or a ball turn. A ball
+  that breaks is a turn: the foe acts alone and then the same rules run.
+- The Pokedex box is a file, NOT NVS, and NOT part of `EXPORT`/`IMPORT` (yet):
+  a save backup does not include what is in it. `WIPE` deletes it.
+- Experience lives beside `PartyMon` (`Party::xp[]`), so every Party method that
+  moves a creature moves its experience -- `xp_test` checks swap, add, replace
+  and reload. A new mover must do the same, or experience will jump between
+  creatures. Its ceiling is `Pet::xpCap()`, the best level the player RAISED.
+- Retired creatures are no longer frozen in level: they grow by experience while
+  in the party. Older notes below that say "frozen at banking" predate this.
 
 ## TODO
 

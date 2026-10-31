@@ -111,6 +111,8 @@ uint8_t catchChancePct(int16_t dex, uint16_t hp, uint16_t maxHp, bool kid);
 // begin()'d and so cannot save. The birthday present and every wild creature
 // are made here, so the two cannot disagree about what a creature is.
 bool makeMon(int16_t dex, uint16_t lvl, bool shiny, PartyMon &out);
+// Eevee's branches this player can be handed right now (EEVEE_EVO_COUNT room).
+uint8_t eeveeBranches(int16_t *out);
 
 // ceremonias de fin de ciclo
 enum : uint8_t { CER_NONE = 0, CER_FAREWELL, CER_RUNAWAY, CER_RELEASE };
@@ -250,6 +252,13 @@ public:
   // A creature caught in the wild joins the Pokedex like a hatched one would.
   void registerCaught(int16_t dex, bool isShiny);
   uint16_t seenCount() const;
+  // The ceiling for experience: the highest level the player has RAISED a
+  // creature to. Experience can bring a banked creature up to it, never past.
+  uint8_t xpCap() const {
+    uint8_t l = (isEgg() || frozen) ? 0 : level();
+    return bestLevel > l ? bestLevel : l;
+  }
+  uint8_t bestLevel = 0;        // player-wide; see xpCap()
 
   uint32_t stickers = 0;        // bit n = sticker n (STK_*)
   bool hasSticker(uint8_t s) const { return s < STK_COUNT && (stickers >> s) & 1; }
