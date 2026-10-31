@@ -12,7 +12,9 @@ B=build/esp32.esp32.esp32s3
 echo "Fusionando binarios..."
 # esptool is not on PATH; the Arduino core ships one and that is the version
 # that matches the build we just made.
-ESPTOOL="$(ls ~/Library/Arduino15/packages/esp32/tools/esptool_py/*/esptool 2>/dev/null | head -1)"
+# macOS keeps it under ~/Library/Arduino15, Linux and WSL under ~/.arduino15.
+ESPTOOL="$(ls ~/Library/Arduino15/packages/esp32/tools/esptool_py/*/esptool \
+              ~/.arduino15/packages/esp32/tools/esptool_py/*/esptool 2>/dev/null | head -1)"
 [ -z "$ESPTOOL" ] && ESPTOOL="$(command -v esptool.py || command -v esptool)"
 [ -z "$ESPTOOL" ] && { echo "no esptool found"; exit 1; }
 
@@ -80,5 +82,13 @@ PYEOF
 echo "Checking the installer cannot erase a save..."
 python3 tools/check_installer.py || { echo "installer would wipe saves -- refusing"; exit 1; }
 
-echo "Empaquetando sprites..."
-python3 tools/pack_bundle.py
+# The packs are built from tools/sdcard/mons, which only exists on a machine
+# that has run pack_pmd.py. Without it the committed packs are still the right
+# ones -- a firmware-only release needs no repack -- so say so instead of
+# failing after everything above has already been written.
+if ls tools/sdcard/mons/*.bin >/dev/null 2>&1; then
+  echo "Empaquetando sprites..."
+  python3 tools/pack_bundle.py
+else
+  echo "No tools/sdcard/mons here: keeping the committed sprite packs as they are."
+fi
