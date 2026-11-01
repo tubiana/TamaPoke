@@ -146,6 +146,20 @@ int main(){
   openExplore();
   render();
   ck(exploreOpen && expPlace < 0, "EXPLORE opens on the map");
+  // the back arrow beside the title: it leaves, and no pin sits under it
+  {
+    const int AX = 233 - 120, AY = 46, AR = 22 + 12, PIN_R = 30;
+    bool clear = true;
+    for (uint8_t p = 0; p < PLACE_COUNT; p++) {
+      int dx = MAP_PINS[p].x * 2 - AX, dy = MAP_PINS[p].y * 2 + 8 - AY;
+      clear &= dx * dx + dy * dy > (AR + PIN_R) * (AR + PIN_R);
+    }
+    ck(clear, "the back arrow's hit area overlaps no place's pin");
+    exploreTap(AX + 14, AY + 14);          // a finger near the arrow, not on its centre
+    ck(!exploreOpen, "tapping the back arrow leaves the map");
+    openExplore();
+    render();
+  }
   exploreTap(MAP_PINS[PL_FOREST].x * 2, MAP_PINS[PL_FOREST].y * 2);
   ck(expPlace == PL_FOREST, "tapping the forest's pin goes to the forest");
   render();
