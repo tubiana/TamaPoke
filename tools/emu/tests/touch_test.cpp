@@ -33,7 +33,7 @@ String FakeSerial::readStringUntil(char) { return String(""); }
 void setup();
 void loop();
 extern Pet pet;   // defined in the sketch
-extern bool trainOpen, sackOpen, gameOpen, menuOpen, cardOpen, movePickOpen, spdOpen;
+extern bool trainOpen, sackOpen, gameOpen, menuOpen, cardOpen, movePickOpen, spdOpen, exploreOpen;
 extern uint8_t movePickSlot, movePickPage;
 extern bool battleOpen, btlOver, btlWon;
 extern Combatant btlYou, btlFoe;
@@ -167,9 +167,15 @@ int main(int argc, char **argv) {
   gameOpen = false;
   trainOpen = false;
 
+  click(233, 60);
+  click(233, 75 + 16 + 46 + 4 + 22);     // menu row 1 == EXPLORE
+  if (!exploreOpen) { printf("FAIL: EXPLORE row did not open the map\n"); return 1; }
+  printf("PASS: menu EXPLORE row opens the map\n");
+  exploreOpen = false;
+
   click(233, 60);                        // name/status band opens the menu
   if (!menuOpen) { printf("FAIL: name band did not open the menu\n"); return 1; }
-  click(233, 104 + 16 + 22);             // menu row 0 == STATS == MENU_ROW_Y(0)+22
+  click(233, 75 + 16 + 22);              // menu row 0 == STATS == MENU_ROW_Y(0)+22
   if (!cardOpen || cardPage != 1) {
     printf("FAIL: STATS row -> cardOpen=%d cardPage=%d (want 1,1)\n",
            (int)cardOpen, (int)cardPage);

@@ -133,6 +133,9 @@ void Pet::syncClock(uint32_t nowEpoch) {
     return;
   }
   if (mins > 14UL * 24 * 60) mins = 14UL * 24 * 60;  // tope: 2 semanas
+  // Exploring recharges while switched off too, at the rate of whatever state
+  // the creature was left in.
+  expGain(mins * (sleeping ? EXP_SLEEP_RATE : 1));
 
   const uint8_t offFloor = needFloor(15);
   for (uint32_t i = 0; i < mins; i++) {
@@ -190,6 +193,8 @@ void Pet::tick() {
                             // los 3 min con la especie sorteada y se perderia la
                             // eleccion del jugador
   if (!frozen) ageMinutes++;   // a revived companion does not age
+  if (!isEgg() && !frozen && level() > bestLevel) bestLevel = level();
+  expGain(sleeping ? EXP_SLEEP_RATE : 1);   // the explore bar: player-wide, egg or not
 
   if (isEgg()) {
     if (ageMinutes >= 3) hatch();  // si no lo tocas, eclosiona solo a los 3 min
@@ -413,16 +418,8 @@ int16_t Pet::openGift() {
   if (!pick) return 0;
   uint16_t lvl = isEgg() ? GIFT_MIN_LEVEL : level();
   if (lvl < GIFT_MIN_LEVEL) lvl = GIFT_MIN_LEVEL;
-  Pet g;
-  g.dbgHatchAs(pick, true);
-  g.ageMinutes = (uint32_t)(lvl - 1) * MINUTES_PER_LEVEL;
-  g.relearnFromLevel();
   PartyMon m;
-  m.dex = pick;
-  m.level = lvl;
-  m.ivAtk = g.ivAtk; m.ivDef = g.ivDef; m.ivSpe = g.ivSpe; m.ivHp = g.ivHp;
-  m.shiny = 1;
-  for (int i = 0; i < MOVE_SLOTS; i++) m.moves[i] = g.moves[i];
+  if (!makeMon(pick, lvl, true, m)) return 0;
   if (!party.add(m) && !party.boxAdd(m)) return 0;
   dexReg[(pick - 1) >> 3] |= (1 << ((pick - 1) & 7));
   dexShinyReg[(pick - 1) >> 3] |= (1 << ((pick - 1) & 7));
@@ -433,6 +430,147 @@ int16_t Pet::openGift() {
   checkStickers();              // the new Pokedex entry may cross a milestone too
   save();
   return pick;
+}
+
+int16_t evolutionAt(int16_t dex, uint16_t level) {
+  if (dex < 1 || dex > DEX_COUNT) return 0;
+  const DexEntry &e = DEX_TBL[dex];
+  if (!e.evolvesTo || !e.evolveLevel || level < e.evolveLevel) return 0;
+  if (dex == DEX_EEVEE) {
+    int16_t o[EEVEE_EVO_COUNT];
+    uint8_t n = eeveeBranches(o);
+    return n ? o[random(n)] : 0;
+  }
+  int16_t to = (int16_t)e.evolvesTo;
+  if (to > DEX_COUNT || !speciesHasArt(to) || !regionAvailable(regionOfDex(to))) return 0;
+  return to;
+}
+
+bool makeMon(int16_t dex, uint16_t lvl, bool shiny, PartyMon &m) {
+  if (dex < 1 || dex > DEX_COUNT) return false;
+  if (lvl < 1) lvl = 1;
+  if (lvl > MAX_LEVEL) lvl = MAX_LEVEL;
+  Pet g;                        // never begin()'d: it cannot save
+  g.dbgHatchAs(dex, shiny);
+  g.ageMinutes = (uint32_t)(lvl - 1) * MINUTES_PER_LEVEL;
+  g.relearnFromLevel();
+  m = PartyMon();
+  m.dex = dex;
+  m.level = lvl;
+  m.ivAtk = g.ivAtk; m.ivDef = g.ivDef; m.ivSpe = g.ivSpe; m.ivHp = g.ivHp;
+  m.shiny = shiny ? 1 : 0;
+  for (int i = 0; i < MOVE_SLOTS; i++) m.moves[i] = g.moves[i];
+  return true;
+}
+
+// ---------- exploring ----------
+
+bool placeHas(uint8_t place, int16_t d) {
+  if (d < 1 || d > DEX_COUNT || place >= PLACE_COUNT) return false;
+  const DexEntry &e = DEX_TBL[d];
+  auto is = [&](uint8_t t) { return e.type1 == t || e.type2 == t; };
+  switch (place) {
+    case PL_OCEAN: return is(T_WATER);
+    // The beach biome is almost all swimmers, which the ocean already has, so
+    // the beach keeps what walks on it: everything there but pure Water types.
+    case PL_BEACH: return e.biome == PL_BEACH && !(e.type1 == T_WATER && e.type2 == T_NONE);
+    case PL_CAVE: return is(T_ROCK) || is(T_GROUND) || is(T_GHOST) || is(T_DARK);
+    default: return e.biome == place;
+  }
+}
+
+bool wildCandidate(int16_t d) {
+  if (d < 1 || d > DEX_COUNT) return false;
+  if (DEX_TBL[d].rarity == R_LEGENDARIO) return false;
+  return regionAvailable(regionOfDex(d)) && speciesHasArt(d);
+}
+
+uint16_t placeCount(uint8_t place) {
+  uint16_t n = 0;
+  for (int16_t d = 1; d <= DEX_COUNT; d++) n += placeHas(place, d) && wildCandidate(d);
+  return n;
+}
+
+uint8_t catchChancePct(int16_t dex, uint16_t hp, uint16_t maxHp, bool kid) {
+  uint8_t r = (dex >= 1 && dex <= DEX_COUNT) ? DEX_TBL[dex].rarity : R_COMUN;
+  // at full health, and at the last sliver of it
+  int full = r == R_RARO ? 12 : (r == R_EVO ? 25 : 40);
+  int low = r == R_RARO ? 60 : (r == R_EVO ? 80 : 92);
+  if (!maxHp) maxHp = 1;
+  if (hp > maxHp) hp = maxHp;
+  int p = low - (low - full) * (int)hp / (int)maxHp;
+  if (kid) p += 15;
+  return (uint8_t)(p < 1 ? 1 : (p > 95 ? 95 : p));
+}
+
+bool Pet::expSpend() {
+  if (!expN) return false;
+  if (expN == EXP_MAX) expAcc = 0;   // the clock to the next one starts now
+  expN--;
+  save();
+  return true;
+}
+
+uint16_t Pet::expMinutesToNext() const {
+  return expN >= EXP_MAX ? 0 : (uint16_t)(EXP_CHARGE_UNITS - expAcc);
+}
+
+void Pet::expGain(uint32_t units) {
+  if (expN >= EXP_MAX) { expAcc = 0; return; }
+  // in 32 bits: two weeks offline at the sleep rate is ~100k units
+  uint32_t acc = expAcc + units;
+  while (acc >= EXP_CHARGE_UNITS && expN < EXP_MAX) { acc -= EXP_CHARGE_UNITS; expN++; }
+  expAcc = expN >= EXP_MAX ? 0 : (uint16_t)acc;
+}
+
+uint8_t Pet::wildLevel() const {
+  int base = 0;
+  if (!isEgg()) base = level();
+  for (int i = 0; i < PARTY_SLOTS; i++)
+    if (!party.slots[i].empty() && party.slots[i].level > base) base = party.slots[i].level;
+  if (base < 5) base = 5;
+  int l = base - 2 + (int)random(5);
+  return (uint8_t)(l < 2 ? 2 : (l > MAX_LEVEL ? MAX_LEVEL : l));
+}
+
+// A weighted draw over everyone living there: common ones often, rare ones
+// seldom, never a legendary, and evolved forms only once the player's own
+// creatures are grown enough to meet them. One the player has never seen
+// counts WILD_UNSEEN_MULT times. Reservoir sampling, so no candidate array.
+int16_t Pet::rollWild(uint8_t place) const {
+  uint8_t lv = wildLevel();
+  uint32_t total = 0;
+  int16_t pick = 0;
+  for (int16_t d = 1; d <= DEX_COUNT; d++) {
+    if (!placeHas(place, d) || !wildCandidate(d)) continue;
+    uint8_t r = DEX_TBL[d].rarity;
+    uint32_t w = r == R_COMUN ? 6 : (r == R_RARO ? 1 : (lv >= 20 ? 2 : 0));
+    if (!w) continue;
+    if (!isSeen(d)) w *= WILD_UNSEEN_MULT;
+    total += w;
+    if ((uint32_t)random(total) < w) pick = d;
+  }
+  return pick;
+}
+
+void Pet::markSeen(int16_t dex) {
+  if (dex < 1 || dex > DEX_COUNT) return;
+  dexSeen[(dex - 1) >> 3] |= (1 << ((dex - 1) & 7));
+}
+
+void Pet::registerCaught(int16_t dex, bool isShiny) {
+  if (dex < 1 || dex > DEX_COUNT) return;
+  markSeen(dex);
+  dexReg[(dex - 1) >> 3] |= (1 << ((dex - 1) & 7));
+  if (isShiny) dexShinyReg[(dex - 1) >> 3] |= (1 << ((dex - 1) & 7));
+  checkStickers();               // the Pokedex milestones count catches too
+  save();
+}
+
+uint16_t Pet::seenCount() const {
+  uint16_t n = 0;
+  for (int16_t d = 1; d <= DEX_COUNT; d++) n += isSeen(d);
+  return n;
 }
 
 uint8_t Pet::stickerCount() const {
@@ -526,7 +664,10 @@ bool Pet::lineHasUnregistered(int16_t base) const {
   return false;
 }
 
-uint8_t Pet::eeveeOptions(int16_t *out) const {
+uint8_t Pet::eeveeOptions(int16_t *out) const { return eeveeBranches(out); }
+
+// THE answer for Eevee, for the live creature and a banked one alike.
+uint8_t eeveeBranches(int16_t *out) {
   uint8_t n = 0;
   for (uint8_t i = 0; i < EEVEE_EVO_COUNT; i++) {
     int16_t b = EEVEE_EVOS[i];
@@ -1489,6 +1630,10 @@ void Pet::save() {
   prefs.putUChar("bdd", bdayDay);
   prefs.putUShort("gyr", giftYear);
   prefs.putUInt("stkr", stickers);
+  prefs.putUChar("exn", expN);
+  prefs.putUChar("bstlv", bestLevel);
+  prefs.putUShort("exa", expAcc);
+  prefs.putBytes("dxsn", dexSeen, sizeof(dexSeen));
   prefs.putUChar("bond", bond);
   prefs.putUShort("medal", medals);
   prefs.putUShort("tmedal", totalMedals);
@@ -1567,6 +1712,21 @@ void Pet::load() {
   if (bdayMonth > 12 || bdayDay > 31) bdayMonth = bdayDay = 0;
   giftYear = prefs.getUShort("gyr", 0);
   stickers = prefs.getUInt("stkr", 0);
+  expN = prefs.getUChar("exn", EXP_MAX);
+  if (prefs.isKey("bstlv")) {
+    bestLevel = prefs.getUChar("bstlv", 0);
+  } else {
+    // A save from before experience: the best so far is whatever the player
+    // already raised -- the live creature and everyone they banked. The party
+    // is loaded before the pet (setup()), so it is there to ask.
+    bestLevel = 0;
+    for (auto &m : party.slots) if (!m.empty() && m.level > bestLevel) bestLevel = (uint8_t)m.level;
+    for (auto &m : party.box) if (!m.empty() && m.level > bestLevel) bestLevel = (uint8_t)m.level;
+  }
+  if (expN > EXP_MAX) expN = EXP_MAX;
+  expAcc = prefs.getUShort("exa", 0);
+  if (expAcc >= EXP_CHARGE_UNITS) expAcc = 0;
+  loadBlob(prefs, "dxsn", dexSeen, sizeof(dexSeen));
   bond = prefs.getUChar("bond", 0);
   medals = prefs.getUShort("medal", 0);
   totalMedals = prefs.getUShort("tmedal", 0);
@@ -1608,4 +1768,5 @@ void Pet::load() {
   checkLearnGates();
   // siembra: la mascota actual cuenta como criada (guardados antiguos)
   if (speciesId >= 1) registerSpecies(speciesId);
+  if (!isEgg() && !frozen && level() > bestLevel) bestLevel = level();
 }

@@ -29,6 +29,10 @@ extern Party party;
 extern uint8_t settingsPage;
 extern bool quizOpen;
 void openQuiz();
+void openExplore();
+extern bool exploreOpen, expKeepAsk;
+extern int8_t expPlace;
+extern int16_t galleryDetail;
 void startBattle(int16_t dex, uint8_t lvl);
 
 static int bad = 0;
@@ -38,6 +42,7 @@ static void clearAll(){
   boxOpen=releaseConfirm=false;
   partyDetail=boxDetail=0;
   settingsPage=0; quizOpen=false;
+  exploreOpen=false; expKeepAsk=false; galleryDetail=0;
 }
 static void check(const char *name){
   gfx->frameReady = false;
@@ -79,6 +84,11 @@ int main(){
   for (uint8_t p=0;p<4;p++){ clearAll(); cardOpen=true; cardPage=p;
     char n[16]; snprintf(n,sizeof(n),"card%u",p); check(n); }
   clearAll(); startBattle(9,50); check("battle");
+  clearAll(); openExplore();               check("exploremap");
+  for (int8_t p=0;p<8;p++){ clearAll(); openExplore(); expPlace=p;
+    char n[16]; snprintf(n,sizeof(n),"place%d",p); check(n); }
+  clearAll(); openExplore(); expPlace=0; expKeepAsk=true; check("keepask");
+  clearAll(); galleryOpen=true; galleryDetail=6; check("dexpage");
   // The detail sheets and the release confirm drawn over them. A creature has to
   // be IN the slot: an empty one falls through to the grid, which flushes for a
   // different reason and would pass without ever drawing a sheet.
@@ -103,6 +113,8 @@ int main(){
   clearAll(); galleryOpen=true; openQuiz(); crumbIs("quiz");
   clearAll(); cardOpen=true;        crumbIs("card");
   clearAll(); startBattle(9,50);    crumbIs("battle");
+  clearAll(); openExplore();        crumbIs("explore");
+  clearAll(); openExplore(); expPlace=3; crumbIs("explore");
   clearAll();
 
   printf("%s\n", bad ? "FAILURES" : "every screen flushes");

@@ -3,7 +3,7 @@
 [![Flash in browser](https://img.shields.io/badge/flash-in%20browser-FF6B00?logo=googlechrome&logoColor=white)](https://tubiana.github.io/TamaPoke/web/)
 [![MakerWorld](https://img.shields.io/badge/MakerWorld-3D%20case-00AE42?logo=bambulab&logoColor=white)](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)
 ![Board](https://img.shields.io/badge/board-ESP32--S3%20round%20AMOLED-E7352C?logo=espressif&logoColor=white)
-![Firmware](https://img.shields.io/badge/firmware-v3.18-8A2BE2)
+![Firmware](https://img.shields.io/badge/firmware-v3.19-8A2BE2)
 ![Code](https://img.shields.io/badge/code-MIT-blue)
 ![Languages](https://img.shields.io/badge/languages-6-FFCB05)
 [![Stars](https://img.shields.io/github/stars/tubiana/TamaPoke?style=flat&logo=github&color=yellow)](https://github.com/tubiana/TamaPoke/stargazers)
@@ -276,7 +276,8 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
 ### Your party
 - A **farewell** or a **release** doesn't end the relationship any more — the creature
   **joins your party** (6 slots), keeping its species, nickname, shiny status, IVs,
-  training and the level it reached. Frozen there: it no longer ages or trains.
+  training and the level it reached. It no longer ages or trains -- but it now
+  **grows by fighting** (see "Experience" below).
 - A **runaway does not join.** It's the one ending with a cost, and letting a
   neglected pet come back on the team would remove it. **Neither does an early
   retire** — see "Retiring a creature early" below.
@@ -287,7 +288,47 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
   rather than jumping straight into the party, and **TO PARTY** does that.
 - With a full party you're taken straight to the party screen to pick who the
   newcomer replaces — or to let it go. Nothing is ever overwritten silently.
-- *(Gym battles, which is what the party is for: on the roadmap.)*
+
+### Exploring and catching
+Menu > **EXPLORE** opens a map of an island with eight places. Tap one, then
+tap the hiding spot that is **moving** (grass, sand, rocks, bubbles, snow or
+lava, by place).
+- **Outings: 3 at most.** One comes back every **200 awake minutes** or **40
+  asleep** -- a full bar in **10 h** awake or **2 h** of sleep. Switched off it
+  recharges at the rate of the state it was left in. Tapping a spot that is
+  *not* moving costs nothing.
+- **Who lives where.** Meadow, beach, forest, volcano, mountain and snow are the
+  species' own biomes (the beach keeps what walks on it -- pure Water types are in
+  the ocean). **Ocean** = every Water type; **cave** = Rock, Ground, Ghost and
+  Dark. Never a legendary; only regions whose pack is installed and species that
+  can be drawn. Weights: common 6, rare 1, evolved forms 2 (and only once your
+  team is level 20+). **A species you have never seen counts 3x.**
+- **Levels** sit around your team's: the highest of the live creature and the
+  party, minus 2 to plus 2.
+- **10% take fright** and run (they still count as *seen*); 90% start a fight on
+  the same scene. **1 in 100** is shiny.
+- **The BALL** sits beside FIGHT. It holds with a chance from the species'
+  rarity and the HP left, linear between full health and the last sliver:
+  common 40% -> 92%, evolved 25% -> 80%, rare 12% -> 60%; **kid mode +15**;
+  always 1..95%. A miss costs your turn and the foe acts. A wild creature
+  knocked out is gone.
+- **The Pokedex keeps them.** A catch is registered and stored in the
+  **Pokedex box**: one creature per species, on the board's own flash (not the
+  SD card). Catching a species again asks **which one to keep**. On a species'
+  Pokedex page, **TO TEAM** moves it into the party (or the box), and **STORE
+  HERE** puts a team member of that species back.
+
+### Experience
+- Every foe knocked out -- or caught -- gives experience to **all six of the
+  party**: the full share to whoever was sent out in that fight, **50%** to the
+  rest. Wild foe: **4 x its level**; a trainer's: **6 x its level**. The box
+  takes none; nothing in LAN battles.
+- A level costs **20 + 6 x level** (level 10: 80, level 50: 320).
+- **Never past the highest level you have raised a creature to** (the live
+  creature's own level counts as it grows), so raising stays the heart of it.
+- Reaching its species' evolution level, a banked creature **evolves** -- into
+  one whose pack is installed, Eevee into one of its branches.
+- The live creature takes none: its level is its age.
 
 ### The three endings (you choose & witness each — none auto-fire)
 - 💛 **Farewell** — when it's a **final form** that has lived **3 days**. A button

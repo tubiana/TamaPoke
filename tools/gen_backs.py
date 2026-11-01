@@ -48,6 +48,16 @@ ARENAS = [
     ('ARENA DRAGON',   'dragon, and every Champion'),
 ]
 
+# places to explore that have no biome backdrop of their own, day and night.
+# The other places reuse BACKS: the explore code maps place -> scene.
+XBACKS = [
+    ('OCEAN',   'the open sea'),
+    ('VOLCANO', 'the volcano -- the volcano BIOME still battles in CAVE'),
+]
+
+# the explore map, full panel at 2x, with its pins from MAP.json
+MAP = 'MAP'
+
 
 def read_png(path):
     d = open(path, 'rb').read()
@@ -134,9 +144,9 @@ def main():
     names = []
     total = 0
 
-    def emit(file, nm, note):
+    def emit(file, nm, note, size=(240, 112)):
         nonlocal total
-        w, h, ch, rows = load(os.path.join(SRC, file + '.png'))
+        w, h, ch, rows = load(os.path.join(SRC, file + '.png'), size)
         pal, idx = to_indexed(w, h, ch, rows)
         names.append((nm, w, h, len(pal)))
         total += len(idx) + len(pal) * 2
@@ -155,6 +165,10 @@ def main():
             emit(base + suffix, 'BACK_%d_%d' % (bi, ni), note)
     for ai, (file, note) in enumerate(ARENAS):
         emit(file, 'ARENA_%d' % ai, note)
+    for xi, (base, note) in enumerate(XBACKS):
+        for ni, suffix in enumerate(('', ' NIGHT')):
+            emit(base + suffix, 'XBACK_%d_%d' % (xi, ni), note)
+    emit(MAP, 'MAPART', 'the explore map', size=(233, 233))
     out.append('struct BackScene {')
     out.append('  const uint16_t *pal;')
     out.append('  const uint8_t *idx;')
@@ -176,6 +190,31 @@ def main():
     for ai in range(len(ARENAS)):
         nm, w, h, pc = names[len(BIOMES) * 2 + ai]
         out.append('  { %s_PAL, %s_IDX, %d, %d, %d },' % (nm, nm, w, h, pc))
+    out.append('};')
+    out.append('')
+    base = len(BIOMES) * 2 + len(ARENAS)
+    out.append('enum : uint8_t { %s, XBACK_COUNT };'
+               % ', '.join('XB_' + b for b, _ in XBACKS))
+    out.append('static const BackScene XBACKS[XBACK_COUNT][2] = {')
+    for xi in range(len(XBACKS)):
+        row = []
+        for ni in range(2):
+            nm, w, h, pc = names[base + xi * 2 + ni]
+            row.append('{ %s_PAL, %s_IDX, %d, %d, %d }' % (nm, nm, w, h, pc))
+        out.append('  { %s },' % ', '.join(row))
+    out.append('};')
+    nm, w, h, pc = names[base + len(XBACKS) * 2]
+    out.append('static const BackScene MAP_ART = { %s_PAL, %s_IDX, %d, %d, %d };' % (nm, nm, w, h, pc))
+    # The pins: where each place sits, in map pixels, in the firmware's PL_*
+    # order. From MAP.json so a replacement map brings its own.
+    import json
+    meta = json.load(open(os.path.join(SRC, MAP + '.json')))
+    sc = (w / float(meta['size'])) if meta.get('size') else 1.0
+    out.append('struct MapPin { uint8_t x, y; };')
+    out.append('#define MAP_PIN_COUNT %d' % len(meta['pins']))
+    out.append('static const MapPin MAP_PINS[MAP_PIN_COUNT] = {')
+    for nm_, x, y in meta['pins']:
+        out.append('  { %d, %d },   // %s' % (round(x * sc), round(y * sc), nm_))
     out.append('};')
     open(OUT, 'w').write('\n'.join(out) + '\n')
     print('backgrounds: %d, %.1f KB of data -> %s'
