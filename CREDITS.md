@@ -115,6 +115,9 @@ file without `--force`, so any of them can be replaced by another picture under
 the same name; `gen_backs.py` fits whatever it finds to 240x112 and 255 colours.
 If a replacement comes from an image generator, record that here.
 
+The main screen's 24 `HOME *` scenes (six biomes in four lights) are the
+project's own too, drawn by `tools/gen_home.py` with the same kit.
+
 ## Gym badge artwork
 
 Two sources, because no single one covers every region.

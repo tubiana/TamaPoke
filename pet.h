@@ -342,6 +342,10 @@ public:
   // level() working untouched rather than needing a second source of truth.
   bool frozen = false;
   void reviveFrom(const PartyMon &m);
+  // A caught creature takes the waiting egg's place and starts a whole life at
+  // level 1: it ages, evolves and says goodbye like anything that hatched.
+  // Only while an egg waits, and the egg is given up for it.
+  bool adoptFrom(const PartyMon &m);
 
   // The player's own name, alongside the badges and the streak: it belongs to
   // whoever is playing, not to the creature, so newEgg() must never clear it.

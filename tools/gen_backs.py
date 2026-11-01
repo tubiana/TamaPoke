@@ -58,6 +58,13 @@ XBACKS = [
 # the explore map, full panel at 2x, with its pins from MAP.json
 MAP = 'MAP'
 
+# the main screen, one per biome in dex.h order (gen_home.py draws them), each
+# in four lights that share ONE set of pixels: an index image plus a palette
+# per light, so a whole day costs one picture.
+HOMES = ['MEADOW', 'BEACH', 'FOREST', 'VOLCANO', 'MOUNTAIN', 'SNOW']
+HOME_PHASES = ['DAWN', 'DAY', 'DUSK', 'NIGHT']
+HOME_SIZE = (233, 156)     # to y=312 at 2x; the status panel covers the rest
+
 
 def read_png(path):
     d = open(path, 'rb').read()
@@ -136,6 +143,41 @@ def to_indexed(w, h, ch, rows):
     return pal, idx
 
 
+def to_indexed_multi(images):
+    """Several pictures of one scene -> one index image + a palette each.
+
+    A pixel's index stands for its colour in EVERY picture at once, so the
+    four lights of a scene drawn from the same shapes need no more indices than
+    one of them. Pictures that disagree in shape can exceed 256 combinations;
+    the rarest are then folded into the nearest common one."""
+    w, h, _, _ = images[0]
+    keys = []
+    for y in range(h):
+        for x in range(w):
+            k = []
+            for (_, _, ch, rows) in images:
+                r, g, b = rows[y][x * ch:x * ch + 3]
+                k.append(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3))
+            keys.append(tuple(k))
+    count = {}
+    for k in keys:
+        count[k] = count.get(k, 0) + 1
+    common = sorted(count, key=lambda k: -count[k])[:256]
+    slot = {k: i for i, k in enumerate(common)}
+
+    def rgb(c):
+        return ((c >> 11) << 3, ((c >> 5) & 63) << 2, (c & 31) << 3)
+
+    def dist(a, b):
+        return sum(sum((p - q) ** 2 for p, q in zip(rgb(u), rgb(v))) for u, v in zip(a, b))
+
+    for k in count:
+        if k not in slot:
+            slot[k] = slot[min(common, key=lambda c: dist(c, k))]
+    pals = [[k[i] for k in common] for i in range(len(images))]
+    return pals, [slot[k] for k in keys]
+
+
 def main():
     out = ['// GENERADO por tools/gen_backs.py desde tools/backs/*.png - no editar',
            '#pragma once', '#include <stdint.h>', '',
@@ -169,6 +211,23 @@ def main():
         for ni, suffix in enumerate(('', ' NIGHT')):
             emit(base + suffix, 'XBACK_%d_%d' % (xi, ni), note)
     emit(MAP, 'MAPART', 'the explore map', size=(233, 233))
+    homes = []
+    for hi, nm in enumerate(HOMES):
+        imgs = [load(os.path.join(SRC, 'HOME %s %s.png' % (nm, ph)), HOME_SIZE) for ph in HOME_PHASES]
+        pals, idx = to_indexed_multi(imgs)
+        n = len(pals[0])
+        total += len(idx) + n * 2 * len(pals)
+        homes.append(n)
+        out.append('// HOME %s -- %s' % (nm, ', '.join(HOME_PHASES)))
+        out.append('static const uint16_t HOME_%d_PAL[%d] = {' % (hi, n * len(pals)))
+        for p in pals:
+            out.append('  ' + ', '.join('0x%04X' % c for c in p) + ',')
+        out.append('};')
+        out.append('static const uint8_t HOME_%d_IDX[%d] = {' % (hi, len(idx)))
+        for r in range(0, len(idx), 40):
+            out.append('  ' + ','.join(str(v) for v in idx[r:r + 40]) + ',')
+        out.append('};')
+        out.append('')
     out.append('struct BackScene {')
     out.append('  const uint16_t *pal;')
     out.append('  const uint8_t *idx;')
@@ -205,6 +264,15 @@ def main():
     out.append('};')
     nm, w, h, pc = names[base + len(XBACKS) * 2]
     out.append('static const BackScene MAP_ART = { %s_PAL, %s_IDX, %d, %d, %d };' % (nm, nm, w, h, pc))
+    # The main screen: `pal` holds HOME_PHASE_COUNT palettes of palCount back
+    # to back, one per light, all over the same idx.
+    out.append('enum : uint8_t { %s, HOME_PHASE_COUNT };' % ', '.join('HP_' + p for p in HOME_PHASES))
+    out.append('#define HOME_COUNT %d' % len(HOMES))
+    out.append('static const BackScene HOMES[HOME_COUNT] = {')
+    for hi, nm_ in enumerate(HOMES):
+        out.append('  { HOME_%d_PAL, HOME_%d_IDX, %d, %d, %d },   // %s'
+                   % (hi, hi, HOME_SIZE[0], HOME_SIZE[1], homes[hi], nm_.lower()))
+    out.append('};')
     # The pins: where each place sits, in map pixels, in the firmware's PL_*
     # order. From MAP.json so a replacement map brings its own.
     import json

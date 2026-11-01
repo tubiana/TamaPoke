@@ -37,7 +37,7 @@
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
-#define FW_VERSION "3.21"
+#define FW_VERSION "3.22"
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   LCD_CS, LCD_SCLK, LCD_SDIO0, LCD_SDIO1, LCD_SDIO2, LCD_SDIO3);
@@ -2538,8 +2538,6 @@ uint16_t inkColor() { return gNight ? UI_INK_NIGHT : UI_INK; }
 // ---------- escena de fondo: bioma del tipo + hora real del RTC ----------
 
 #define C565(r, g, b) ((uint16_t)((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3)))
-#define HORIZON 232  // linea donde el cielo se encuentra con el suelo
-
 uint16_t lerp565(uint16_t a, uint16_t b, int i, int n) {
   if (n <= 0) return a;
   int ar = (a >> 11) & 31, ag = (a >> 5) & 63, ab = a & 31;
@@ -2564,85 +2562,91 @@ static const uint16_t BIOME_SOIL[6] = {
   C565(0xe6, 0xee, 0xf5),  // 5 nieve
 };
 
-void drawClouds(uint32_t now, uint16_t col) {
-  for (int k = 0; k < 2; k++) {
-    int cx = (int)((now / 50 + k * 250) % 560) - 40;
-    int cy = 70 + k * 34;
-    gfx->fillCircle(cx, cy, 16, col);
-    gfx->fillCircle(cx + 18, cy + 3, 13, col);
-    gfx->fillCircle(cx - 15, cy + 4, 12, col);
+// An 8bpp indexed picture at 2x, centred, its top row at y0. The art is flat
+// pixel art with long runs of one colour, so a run is one fillRect.
+void drawIndexed(const uint16_t *pal, const uint8_t *idx, int w, int h, int y0) {
+  const int SC = 2;
+  int x0 = CX - (w * SC) / 2;
+  for (int r = 0; r < h; r++) {
+    const uint8_t *row = idx + (uint32_t)r * w;
+    int c = 0;
+    while (c < w) {
+      uint8_t v = row[c];
+      int run = 1;
+      while (c + run < w && row[c + run] == v) run++;
+      gfx->fillRect(x0 + c * SC, y0 + r * SC, run * SC, SC, pal[v]);
+      c += run;
+    }
   }
 }
 
-void drawScene(uint8_t biome, uint32_t now, bool night) {
+// Which of the home scene's four lights the hour calls for.
+uint8_t homePhase(bool night) {
   int h = sceneHour();
-  uint16_t top, bot;
-  if (night)            { top = C565(0x0c, 0x12, 0x24); bot = C565(0x1e, 0x26, 0x46); }
-  else if (h < 8)       { top = C565(0xd1, 0x6a, 0x86); bot = C565(0xf3, 0xb8, 0x7c); }  // amanecer
-  else if (h < 18)      { top = C565(0x8f, 0xc8, 0xea); bot = C565(0xdc, 0xee, 0xe6); }  // dia
-  else                  { top = C565(0xc7, 0x5a, 0x4a); bot = C565(0xf0, 0xae, 0x64); }  // atardecer
+  return night ? HP_NIGHT : h < 8 ? HP_DAWN : h < 18 ? HP_DAY : HP_DUSK;
+}
 
-  // cielo en bandas
-  for (int y = 0; y < HORIZON; y += 8)
-    gfx->fillRect(0, y, 466, 8, lerp565(top, bot, y, HORIZON));
-
-  // sol o luna
-  if (night) {
-    gfx->fillCircle(360, 78, 24, C565(0xe8, 0xee, 0xf5));
-    gfx->fillCircle(370, 72, 22, lerp565(top, bot, 78, HORIZON));  // creciente
-    for (auto &st : STARS) gfx->fillRect(st[0], st[1], 4, 4, UI_WHITE);
-  } else if (h < 18) {
-    gfx->fillCircle(360, 84, 26, h < 8 ? C565(0xff, 0xd9, 0x8a) : C565(0xff, 0xe7, 0x9f));
-    drawClouds(now, C565(0xff, 0xff, 0xff));
-  } else {
-    gfx->fillCircle(233, HORIZON - 6, 34, C565(0xff, 0xf1, 0xc8));  // sol poniente
-  }
-
-  // mar de la playa: una franja de agua sobre la arena
-  uint16_t soil = BIOME_SOIL[biome < 6 ? biome : 0];
-  if (night) soil = lerp565(soil, C565(0x16, 0x1c, 0x30), 9, 16);
-  if (biome == 1) {
-    uint16_t sea = night ? C565(0x1c, 0x34, 0x52) : C565(0x4f, 0x96, 0xc4);
-    gfx->fillRect(0, HORIZON - 26, 466, 26, sea);
-    for (int i = 0; i < 3; i++) {
-      int wy = HORIZON - 22 + i * 7;
-      uint16_t fc = night ? C565(0x3a, 0x58, 0x78) : C565(0xbf, 0xe6, 0xf5);
-      gfx->fillRect(60 + ((now / 60 + i * 30) % 60), wy, 26, 2, fc);
-      gfx->fillRect(300 - ((now / 60 + i * 20) % 60), wy, 26, 2, fc);
+// The main screen: the biome's picture (tools/gen_home.py, packed by
+// gen_backs.py) in the hour's light, and a few things that move on top of it.
+// The picture stops at y=312; below it is the status panel, painted here too
+// so that every path through render() starts from a whole frame.
+void drawScene(uint8_t biome, uint32_t now, bool night) {
+  const BackScene &b = HOMES[biome < HOME_COUNT ? biome : 0];
+  drawIndexed(b.pal + homePhase(night) * b.palCount, b.idx, b.w, b.h, 0);
+  gfx->fillRect(0, b.h * 2, 466, 466 - b.h * 2, night ? UI_BG_NIGHT : UI_BG_DAY);
+  if (night) {                       // a few stars twinkle
+    for (int i = 0; i < 6; i++) {
+      if ((now / 250 + i * 5) % 11 > 1) continue;
+      int x = STARS[i][0], y = STARS[i][1] - 70;
+      gfx->fillRect(x, y - 2, 2, 6, UI_WHITE);
+      gfx->fillRect(x - 2, y, 6, 2, UI_WHITE);
     }
   }
-
-  // suelo
-  gfx->fillRect(0, HORIZON, 466, 466 - HORIZON, soil);
-  uint16_t hill = lerp565(soil, night ? C565(0x0c, 0x12, 0x24) : C565(0xff, 0xff, 0xff), 3, 16);
-  gfx->fillRoundRect(-60, HORIZON - 14, 586, 60, 30, hill);
-
-  // detalles del bioma
-  uint16_t dk = lerp565(soil, C565(0x10, 0x18, 0x20), night ? 11 : 7, 16);
-  if (biome == 2) {  // bosque: coniferas en silueta
-    for (int tx : { 60, 150, 360, 416 }) {
-      gfx->fillTriangle(tx, HORIZON - 46, tx - 16, HORIZON, tx + 16, HORIZON, dk);
-      gfx->fillTriangle(tx, HORIZON - 60, tx - 12, HORIZON - 28, tx + 12, HORIZON - 28, dk);
+  if (biome == 5) {                  // snow: flakes falling over everything
+    for (int f = 0; f < 14; f++) {
+      int fx = ((f * 67 + now / 45 + (f & 1) * (now / 90)) % 466) & ~1;
+      int fy = ((f * 83 + now / 16) % 312) & ~1;
+      gfx->fillRect(fx, fy, 4, 4, UI_WHITE);
     }
-  } else if (biome == 3) {  // volcan: rocas y brasas
-    gfx->fillTriangle(70, HORIZON, 40, HORIZON + 30, 100, HORIZON + 30, dk);
-    gfx->fillTriangle(400, HORIZON + 4, 372, HORIZON + 30, 430, HORIZON + 30, dk);
-    if (!night)
-      for (int e = 0; e < 4; e++)
-        gfx->fillRect(120 + e * 70, HORIZON + 8 + (e % 2) * 6, 4, 4, C565(0xff, 0x9b, 0x3a));
-  } else if (biome == 4) {  // montana: cumbres al fondo
-    gfx->fillTriangle(140, HORIZON - 50, 60, HORIZON, 220, HORIZON, dk);
-    gfx->fillTriangle(330, HORIZON - 38, 250, HORIZON, 410, HORIZON, dk);
-  } else if (biome == 5 && !night) {  // nieve: copos cayendo
-    for (int f = 0; f < 10; f++) {
-      int fx = (f * 53 + now / 40) % 466;
-      int fy = (f * 90 + now / 18) % HORIZON;
-      gfx->fillRect(fx, fy, 3, 3, UI_WHITE);
+  } else if (biome == 3) {           // volcano: embers rising from the lava
+    for (int e = 0; e < 8; e++) {
+      uint32_t t = (now / 30 + e * 37) % 120;
+      int bx = e < 4 ? 52 : 148, by = e < 4 ? 268 : 76;
+      int x = (bx + (e % 4) * 12 - 18 + (int)(6 * sinf(t * 0.12f + e))) & ~1;
+      int y = (by - (int)t) & ~1;
+      if (y > 0) gfx->fillRect(x, y, 2, 2, t < 60 ? C565(0xff, 0xc8, 0x50) : C565(0xff, 0x7a, 0x30));
     }
-  } else if (biome == 0) {  // pradera: matas de hierba
-    for (int gx : { 80, 175, 300, 395 })
-      for (int b = -1; b <= 1; b++)
-        gfx->fillRect(gx + b * 5, HORIZON + 6, 2, 8 + (b == 0 ? 4 : 0), dk);
+  } else if (biome == 1) {           // beach: the sea glints
+    for (int g = 0; g < 7; g++) {
+      if ((now / 180 + g * 3) % 7 > 1) continue;
+      int x = (40 + g * 61) & ~1, y = 164 + (g * 13) % 40;
+      gfx->fillRect(x, y, 6, 2, night ? C565(0xb0, 0xc8, 0xff) : UI_WHITE);
+    }
+  } else if (night && (biome == 0 || biome == 2)) {   // fireflies
+    for (int f = 0; f < 5; f++) {
+      if ((now / 220 + f * 4) % 9 > 4) continue;
+      int x = (60 + f * 80 + (int)(18 * sinf(now * 0.0011f + f))) & ~1;
+      int y = (220 + (f * 23) % 70 + (int)(10 * sinf(now * 0.0017f + f * 2))) & ~1;
+      gfx->fillRect(x, y, 4, 4, C565(0xe8, 0xff, 0x70));
+    }
+  } else if (!night && biome == 0) {  // meadow: two butterflies
+    for (int k = 0; k < 2; k++) {
+      int x = (int)(k ? 380 : 70) + (int)(26 * sinf(now * 0.0009f + k * 3));
+      int y = (int)(k ? 236 : 250) + (int)(14 * sinf(now * 0.0023f + k));
+      x &= ~1; y &= ~1;
+      uint16_t c = k ? C565(0xff, 0xe0, 0x60) : C565(0xff, 0xff, 0xff);
+      bool open = (now / 140 + k) % 2;
+      gfx->fillRect(x - (open ? 4 : 2), y, open ? 4 : 2, 4, c);
+      gfx->fillRect(x + 2, y, open ? 4 : 2, 4, c);
+      gfx->fillRect(x, y, 2, 4, RGB565_BLACK);
+    }
+  } else if (!night && biome == 4) {  // mountain: a bird gliding past
+    int x = ((now / 40) % 560) - 50, y = 120 + (int)(8 * sinf(now * 0.002f));
+    x &= ~1; y &= ~1;
+    bool up = (now / 300) % 2;
+    gfx->fillRect(x - 6, y - (up ? 2 : 0), 6, 2, INK_K);
+    gfx->fillRect(x, y, 2, 2, INK_K);
+    gfx->fillRect(x + 2, y - (up ? 2 : 0), 6, 2, INK_K);
   }
 }
 
@@ -4048,20 +4052,7 @@ void drawBallIcon(int cx, int cy, int r) {
 }
 
 static void drawBack(const BackScene &b, int y0) {
-  const int SC = 2;
-  int x0 = CX - (b.w * SC) / 2;
-  for (int r = 0; r < b.h; r++) {
-    const uint8_t *row = b.idx + (uint32_t)r * b.w;
-    int c = 0;
-    while (c < b.w) {
-      uint8_t v = row[c];
-      int run = 1;
-      while (c + run < b.w && row[c + run] == v) run++;
-      uint16_t col = b.pal[v];
-      gfx->fillRect(x0 + c * SC, y0 + r * SC, run * SC, SC, col);
-      c += run;
-    }
-  }
+  drawIndexed(b.pal, b.idx, b.w, b.h, y0);
 }
 
 // The backdrops' day/night split, the main screen's own hours.
@@ -6959,9 +6950,42 @@ uint8_t dexPageAction(int16_t dex) {
   return teamMemberOf(dex) ? DEXACT_STORE : DEXACT_NONE;
 }
 
+// While an egg waits, a creature in the Pokedex box can be raised instead of
+// it. The page then shows two buttons side by side, the team one on the left.
+bool dexPageCanAdopt(int16_t dex) {
+  return dexBoxHas(dex) && pet.isEgg() && !pet.awaitingStarter();
+}
+
+#define ADOPT_W 150
+#define ADOPT_GAP 12
+static int dexBtnW(int16_t dex) { return dexPageCanAdopt(dex) ? ADOPT_W : DEXBTN_W; }
+static int dexBtnX(int16_t dex) {
+  return dexPageCanAdopt(dex) ? CX - ADOPT_W - ADOPT_GAP / 2 : CX - DEXBTN_W / 2;
+}
+
 bool dexPageButtonHit(int16_t x, int16_t y) {
-  return x >= CX - DEXBTN_W / 2 && x <= CX + DEXBTN_W / 2 &&
+  int bx = dexBtnX(galleryDetail);
+  return x >= bx && x <= bx + dexBtnW(galleryDetail) &&
          y >= DEXBTN_Y - 4 && y <= DEXBTN_Y + DEXBTN_H + 4;
+}
+
+bool dexAdoptHit(int16_t x, int16_t y) {
+  if (!dexPageCanAdopt(galleryDetail)) return false;
+  int bx = CX + ADOPT_GAP / 2;
+  return x >= bx && x <= bx + ADOPT_W && y >= DEXBTN_Y - 4 && y <= DEXBTN_Y + DEXBTN_H + 4;
+}
+
+// Giving up the egg cannot be undone, so the first tap only arms the button.
+uint32_t adoptArmUntil = 0;
+
+// Raises the Pokedex box's creature of this species in place of the egg.
+bool dexAdopt(int16_t dex) {
+  PartyMon m;
+  if (!dexPageCanAdopt(dex) || !dexBoxGet(dex, m)) return false;
+  if (!pet.adoptFrom(m)) return false;
+  dexBoxTake(dex);
+  Serial.printf("adopt: %s (dex %d) replaces the egg\n", DEX_TBL[dex].name, dex);
+  return true;
 }
 
 // Moves it and returns true, or returns false having changed nothing.
@@ -7042,12 +7066,25 @@ void renderGallery() {
       bool live = (act != DEXACT_TEAM_FULL);
       const char *lbl = act == DEXACT_STORE ? T(S_TO_DEX)
                       : (live ? T(S_TO_TEAM) : T(S_PARTY_FULL));
-      gfx->fillRoundRect(CX - DEXBTN_W / 2, DEXBTN_Y, DEXBTN_W, DEXBTN_H, 12, live ? UI_BAR_OK : UI_TRACK);
-      gfx->drawRoundRect(CX - DEXBTN_W / 2, DEXBTN_Y, DEXBTN_W, DEXBTN_H, 12, UI_INK);
+      int bx = dexBtnX(galleryDetail), bw = dexBtnW(galleryDetail);
+      gfx->fillRoundRect(bx, DEXBTN_Y, bw, DEXBTN_H, 12, live ? UI_BAR_OK : UI_TRACK);
+      gfx->drawRoundRect(bx, DEXBTN_Y, bw, DEXBTN_H, 12, UI_INK);
       gfx->setTextColor(live ? UI_WHITE : 0x8410);
-      int ts = strlen(lbl) * 12 > DEXBTN_W - 16 ? 1 : 2;
+      int ts = strlen(lbl) * 12 > bw - 16 ? 1 : 2;
       gfx->setTextSize(ts);
-      gfx->setCursor(CX - (int)strlen(lbl) * 3 * ts, DEXBTN_Y + DEXBTN_H / 2 - 4 * ts);
+      gfx->setCursor(bx + bw / 2 - (int)strlen(lbl) * 3 * ts, DEXBTN_Y + DEXBTN_H / 2 - 4 * ts);
+      gfx->print(lbl);
+    }
+    if (dexPageCanAdopt(galleryDetail)) {
+      bool armed = millis() < adoptArmUntil;
+      const char *lbl = armed ? T(S_ADOPT_SURE) : T(S_ADOPT);
+      int bx = CX + ADOPT_GAP / 2;
+      gfx->fillRoundRect(bx, DEXBTN_Y, ADOPT_W, DEXBTN_H, 12, armed ? UI_BAR_BAD : UI_BAR_WARN);
+      gfx->drawRoundRect(bx, DEXBTN_Y, ADOPT_W, DEXBTN_H, 12, UI_INK);
+      gfx->setTextColor(UI_WHITE);
+      int ts = strlen(lbl) * 12 > ADOPT_W - 16 ? 1 : 2;
+      gfx->setTextSize(ts);
+      gfx->setCursor(bx + ADOPT_W / 2 - (int)strlen(lbl) * 3 * ts, DEXBTN_Y + DEXBTN_H / 2 - 4 * ts);
       gfx->print(lbl);
     }
     gfx->setTextColor(UI_INK);
@@ -7112,6 +7149,16 @@ void renderGallery() {
 }
 
 void galleryTap(int16_t x, int16_t y) {
+  if (galleryDetail && dexAdoptHit(x, y)) {
+    if (millis() >= adoptArmUntil) { adoptArmUntil = millis() + 3000; sfxPlay(SFX_TAP); return; }
+    adoptArmUntil = 0;
+    if (!dexAdopt(galleryDetail)) { sfxPlay(SFX_DENY); return; }
+    galleryDetail = 0;              // straight back to the new creature
+    galleryPmd.unload();
+    galleryOpen = false;
+    menuOpen = false;
+    return;
+  }
   if (galleryDetail && dexPageButtonHit(x, y)) {
     if (!dexPageDo(galleryDetail)) sfxPlay(SFX_DENY);
     else sfxPlay(SFX_TAP);
@@ -7162,16 +7209,28 @@ void drawBattery() {
   }
 }
 
+// Text over a picture: ringed in whichever of white or ink it stands out
+// from, so it reads on a dawn sky as well as a noon one.
+void printRinged(int x, int y, const char *t, uint8_t size, uint16_t col) {
+  int r = (col >> 11) * 8, g = ((col >> 5) & 63) * 4, b = (col & 31) * 8;
+  uint16_t ring = (r * 3 + g * 6 + b) / 10 > 140 ? (uint16_t)0x1083 : UI_WHITE;
+  gfx->setTextSize(size);
+  gfx->setTextColor(ring);
+  for (int dy = -2; dy <= 2; dy += 2)
+    for (int dx = -2; dx <= 2; dx += 2) {
+      if (!dx && !dy) continue;
+      gfx->setCursor(x + dx, y + dy);
+      gfx->print(t);
+    }
+  gfx->setTextColor(col);
+  gfx->setCursor(x, y);
+  gfx->print(t);
+}
+
 void drawHeader(const char *name, uint16_t nameColor, const char *msg) {
   drawBattery();
-  gfx->setTextColor(nameColor);
-  gfx->setTextSize(3);
-  gfx->setCursor(CX - strlen(name) * 9, 52);
-  gfx->print(name);
-  gfx->setTextColor(inkColor());
-  gfx->setTextSize(2);
-  gfx->setCursor(CX - strlen(msg) * 6, 90);
-  gfx->print(msg);
+  printRinged(CX - strlen(name) * 9, 52, name, 3, nameColor);
+  printRinged(CX - strlen(msg) * 6, 90, msg, 2, inkColor());
 }
 
 // animacion de la ceremonia (10s): despedida = reverencia con corazones y se

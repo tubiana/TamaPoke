@@ -18,7 +18,7 @@ Personal, non-commercial fan project. Code MIT; sprites CC BY-NC (PMD SpriteColl
 | `calendar.h` | Dates from the RTC, the calendar events and their egg types; pure, so `calendar_test` sweeps whole years |
 | `i18n.cpp/.h` | 6-language string table (ES/EN/FR/DE/IT/PT) |
 | `audio.cpp/.h` | ES8311 codec over I2S |
-| `backs.h` | GENERATED (`tools/gen_backs.py`) from `tools/backs/*.png`: the biome backdrops (supplied art) and the gym arenas (`tools/gen_scenes.py`, ours). Any PNG under a scene's name replaces it |
+| `backs.h` | GENERATED (`tools/gen_backs.py`) from `tools/backs/*.png`: the biome backdrops (supplied art), the gym arenas (`tools/gen_scenes.py`, ours) and the main screen's `HOMES` (`tools/gen_home.py`, ours: one index image per biome with FOUR palettes, dawn/day/dusk/night, which `home_test` reads back off the panel). Any PNG under a scene's name replaces it |
 | `audio_mix.h` | How loud each kind of sound is, and the music stepper -- shared with `loud_test`, which measures the balance |
 | `rtcbat.cpp/.h` | PCF85063 RTC + AXP2101 battery/PMU/PWR button |
 | `sdmon.cpp/.h` | SD sprite streaming + USB `PUT` file transfer |
@@ -326,6 +326,11 @@ in a menu row because every gesture from the main screen is taken.
   creatures. Its ceiling is `Pet::xpCap()`, the best level the player RAISED.
 - Retired creatures are no longer frozen in level: they grow by experience while
   in the party. Older notes below that say "frozen at banking" predate this.
+- ADOPT (v3.22) raises a Pokedex-box creature in place of the waiting egg.
+  `Pet::adoptFrom()` goes THROUGH `hatch()` and then restores the caught IVs
+  and name, so an adopted life starts exactly like a hatched one (level 1,
+  level-1 moves, not frozen) -- do not give it its own copy of the start of a
+  life. It is the opposite of `reviveFrom()`, which freezes. `adopt_test`.
 
 ## TODO
 

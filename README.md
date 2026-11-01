@@ -3,7 +3,7 @@
 [![Flash in browser](https://img.shields.io/badge/flash-in%20browser-FF6B00?logo=googlechrome&logoColor=white)](https://tubiana.github.io/TamaPoke/web/)
 [![MakerWorld](https://img.shields.io/badge/MakerWorld-3D%20case-00AE42?logo=bambulab&logoColor=white)](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)
 ![Board](https://img.shields.io/badge/board-ESP32--S3%20round%20AMOLED-E7352C?logo=espressif&logoColor=white)
-![Firmware](https://img.shields.io/badge/firmware-v3.21-8A2BE2)
+![Firmware](https://img.shields.io/badge/firmware-v3.22-8A2BE2)
 ![Code](https://img.shields.io/badge/code-MIT-blue)
 ![Languages](https://img.shields.io/badge/languages-6-FFCB05)
 [![Stars](https://img.shields.io/github/stars/tubiana/TamaPoke?style=flat&logo=github&color=yellow)](https://github.com/tubiana/TamaPoke/stargazers)
@@ -317,6 +317,13 @@ lava, by place).
   SD card). Catching a species again asks **which one to keep**. On a species'
   Pokedex page, **TO TEAM** moves it into the party (or the box), and **STORE
   HERE** puts a team member of that species back.
+- **Adopt one instead of an egg.** While an egg is waiting, a species' Pokedex
+  page also offers **ADOPT** (tap twice: the first tap only asks). The caught
+  creature becomes your companion in the egg's place and starts a whole life
+  at **level 1**, whatever level it was caught at: same species, same IVs and
+  name, but it ages, needs care, evolves and says goodbye like anything that
+  hatched. The egg is given up -- and with it the surprise, the shiny roll and
+  any legendary. It leaves the Pokedex box.
 
 ### Experience
 - Every foe knocked out -- or caught -- gives experience to **all six of the
@@ -778,9 +785,16 @@ Leaving exploring stops any music still playing.
 
 ## Backgrounds: biome + real time
 
-The idle screen paints the sky from the **RTC's real time** (dawn / day / dusk /
-night with moon and stars) and the ground from the **type's biome** (meadow,
-beach, forest, volcano, mountain, snow). Sleeping forces night.
+The idle screen is a scene of the **type's biome** (meadow, beach, forest,
+volcano, mountain, snow) in the light of the **RTC's real time**: dawn before
+8:00, day, dusk from 18:00, night from 20:00 to 6:00 (and whenever it sleeps).
+A few things move on it -- falling snow, rising embers, glints on the sea,
+butterflies, a bird, fireflies and twinkling stars at night. The scenes are
+drawn by `tools/gen_home.py` (233x156, shown at 2x down to the status panel);
+the four lights of a biome share one set of pixels with four palettes, so a
+whole day costs one picture. Replace one by dropping four PNGs named
+`HOME <BIOME> <DAWN|DAY|DUSK|NIGHT>.png` into `tools/backs/` and re-running
+`tools/gen_backs.py`.
 
 A battle against a wild creature (or the `BATTLE` console command) is drawn in
 the foe's biome. A **gym fight is drawn in the leader's arena**, picked by the
