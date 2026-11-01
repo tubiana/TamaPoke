@@ -760,6 +760,7 @@ void setup() {
 
   party.begin();
   pet.begin();
+  dexBoxRepair();
   sdBegin();
   thumbs.load();
 
@@ -6939,6 +6940,23 @@ void keyboardTap(int16_t x, int16_t y) {
     nameBuf[nameLen++] = KB_KEYS[i];
     nameBuf[nameLen] = 0;
   }
+}
+
+// Every creature in the Pokedex box was caught, so its species belongs in the
+// Pokedex. Until 3.25 a fight closed the save's NVS handle (ownprefs.h) and
+// catches after it reached the box -- a file -- but not the Pokedex, so a
+// Pokeball sat on species still drawn in black. Run at every boot: it costs a
+// pass over a bitmap, and it is the one way those catches come back.
+void dexBoxRepair() {
+  if (!dexBoxReady()) return;
+  uint16_t fixed = 0;
+  for (int16_t d = 1; d <= DEX_COUNT; d++) {
+    if (!dexBoxHas(d) || pet.isRegistered(d)) continue;
+    PartyMon m;
+    pet.registerCaught(d, dexBoxGet(d, m) && m.shiny);
+    fixed++;
+  }
+  if (fixed) Serial.printf("dexbox: %u caught species put back in the Pokedex\n", fixed);
 }
 
 // ---------- galeria pokedex ----------

@@ -30,6 +30,7 @@ void battleTap(int16_t x, int16_t y);
 void uiConfirmRects(int *b1Top, int *b1Bot, int *b2Top, int *b2Bot);
 uint8_t dexPageAction(int16_t dex);
 bool dexPageDo(int16_t dex);
+void dexBoxRepair();
 extern Pet pet;
 extern Party party;
 extern bool exploreOpen, expKeepAsk, battleOpen, btlWild, btlCaught, btlOver;
@@ -216,6 +217,20 @@ int main(){
   for (int i = 0; i < BOX_SLOTS; i++) party.boxAdd(filler);
   ck(dexPageAction(dex) == 2 && !dexPageDo(dex) && dexBoxHas(dex),
      "with the team AND the box full, it stays where it is");
+
+  // --- the repair: a catch that reached the box but not the Pokedex (what a
+  // closed NVS handle left behind before 3.25) is put back at boot
+  {
+    int16_t lost = 0;
+    for (int16_t d = 1; d <= DEX_COUNT && !lost; d++)
+      if (!pet.isRegistered(d) && !dexBoxHas(d) && wildCandidate(d)) lost = d;
+    PartyMon m; makeMon(lost, 9, false, m);
+    dexBoxPut(m);
+    ck(dexBoxHas(lost) && !pet.isRegistered(lost), "a species in the box but not the Pokedex (the 3.24 state)");
+    dexBoxRepair();
+    Pet again; again.begin();
+    ck(pet.isRegistered(lost) && again.isRegistered(lost), "the boot repair registers it, and it is saved");
+  }
 
   printf(bad ? "\n%d FAILED\n" : "\nALL PASS\n", bad);
   return bad ? 1 : 0;
