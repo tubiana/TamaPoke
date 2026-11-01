@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include <Preferences.h>
+#include "ownprefs.h"
 #include "dex.h"
 #include "trainers.h"   // GYM_REGIONS sizes the badge masks
 #include "party.h"
@@ -567,7 +568,7 @@ public:
   void saveNow();
 
 private:
-  Preferences prefs;
+  OwnedPrefs prefs;     // a copy never shares the handle: see ownprefs.h
   // A Pet that was never begin()'d MUST NOT WRITE. Nothing enforced that, and
   // the battle code builds its opponent as a throwaway Pet:
   //
@@ -582,7 +583,7 @@ private:
   //
   // The rule belongs here rather than at the call sites: every future throwaway
   // Pet is covered without anyone having to remember.
-  bool opened = false;
+  bool opened = false;   // a copy carries it, but its OwnedPrefs is unopened and writes nothing
   uint32_t lastTick = 0;
   uint32_t eatUntil = 0;
   uint32_t heartUntil = 0;

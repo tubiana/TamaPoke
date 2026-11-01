@@ -27,6 +27,7 @@ int main(){
   // both ladders, a Pokedex with holes in it, a named trainer
   Pet pet;
   pet.begin();
+  party.begin();   // as setup() does: an unopened store writes nothing, like NVS
   pet.dbgHatchAs(6,true);
   pet.ageMinutes = 72UL*MINUTES_PER_LEVEL;
   pet.ivAtk=31; pet.ivDef=7; pet.ivSpe=22; pet.ivHp=19;

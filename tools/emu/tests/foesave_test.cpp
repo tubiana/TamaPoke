@@ -63,6 +63,27 @@ int main(){
     Pet q; q.begin();
     ck(q.level() == 81, "an OPENED pet still saves normally (the guard is not too wide)");
   }
+  // A COPY of the live pet -- the battle builds the player's side from one
+  // (buildSquad: `Pet tmp = pet`). It must neither write over the stored
+  // creature nor, when it dies, close the real pet's store: Arduino's
+  // ~Preferences() is nvs_close(), and a shared handle made every later save
+  // fail silently until a reboot. See ownprefs.h.
+  {
+    Pet p; p.begin();
+    p.ageMinutes = 60UL*80;
+    p.saveNow();
+    {
+      Pet tmp = p;
+      tmp.ageMinutes = 60UL*13;             // level-capped for a gym, as buildSquad does
+      tmp.rename("COPY");                   // rename() saves -- through the copy
+    }
+    Pet q; q.begin();
+    ck(q.level() == 81 && strcmp(q.nick, "COPY"), "a COPY of the live pet cannot write over it");
+    p.ageMinutes = 60UL*90;
+    p.saveNow();
+    Pet r; r.begin();
+    ck(r.level() == 91, "and once the copy is gone, the live pet STILL saves");
+  }
   printf("%s\n", bad?"FAILURES":"all good");
   return bad?1:0;
 }

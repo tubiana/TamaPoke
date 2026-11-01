@@ -37,7 +37,7 @@
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
-#define FW_VERSION "3.24"
+#define FW_VERSION "3.25"
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   LCD_CS, LCD_SCLK, LCD_SDIO0, LCD_SDIO1, LCD_SDIO2, LCD_SDIO3);
@@ -1586,6 +1586,22 @@ void handleSerial() {
       if (m.empty()) Serial.print(" -");
       else Serial.printf(" %s%s(nv%u)", DEX_TBL[m.dex].name, m.shiny ? "*" : "", m.level);
     }
+    Serial.println();
+    Serial.println("DONE");
+  } else if (line == "OUTINGS") {   // refill the explore bar (testing)
+    pet.expGain(EXP_CHARGE_UNITS * EXP_MAX);
+    pet.saveNow();
+    Serial.printf("outings %u/%u\n", pet.expCharges(), EXP_MAX);
+    Serial.println("DONE");
+  } else if (line == "FULL") {      // every need to 100: food, joy, energy, hygiene (testing)
+    pet.fullness = pet.joy = pet.energy = pet.hygiene = 100;
+    pet.saveNow();
+    Serial.println("DONE");
+  } else if (line == "DEXBOX") {    // what the Pokedex box holds, on the board's flash
+    if (!dexBoxReady()) Serial.println("dexbox: NOT MOUNTED");
+    Serial.printf("dexbox %u:", dexBoxCount());
+    for (int16_t d = 1; d <= DEX_COUNT; d++)
+      if (dexBoxHas(d)) Serial.printf(" %d%s", d, pet.isRegistered(d) ? "" : "(NOT IN POKEDEX)");
     Serial.println();
     Serial.println("DONE");
   } else if (line == "REG") {
@@ -4199,7 +4215,7 @@ static void buildSquad(uint8_t maxLvl, uint8_t maxCount, uint16_t mask) {
   btlXpPaid = 0;
   if (maxCount > TRAINER_TEAM_MAX) maxCount = TRAINER_TEAM_MAX;
   if (!pet.isEgg() && btlSquadN < maxCount && (mask & 1)) {
-    Pet tmp = pet;                       // a copy: the real pet is untouched
+    Pet tmp = pet;   // a copy: it cannot save, nor close the real pet's store (ownprefs.h)
     if (maxLvl && tmp.level() > maxLvl)
       tmp.ageMinutes = (uint32_t)(maxLvl - 1) * MINUTES_PER_LEVEL;
     btlSquadSlot[btlSquadN] = -1;
