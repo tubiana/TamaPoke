@@ -28,7 +28,7 @@ g++ -std=c++17 -O1 -w -I"$EMU" -I"$ROOT" -DSPRITE_DIR='"x"' -o "$WORK/cap" \
 
 SCENES="region starter egg main feed sleep menu card1 card2 train player stickers party
         gympick gyms fight fightmoves win dexpick dex dexdetail quiz quizright quizdone
-        clock date options birthday"
+        clock date options birthday explmap explscene explocean explvolcano wild caught keep dexbox sheetxp"
 cd "$WORK"
 for s in $SCENES; do
   for l in 1 2; do                       # LANG_EN, LANG_FR
