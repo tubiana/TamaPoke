@@ -331,6 +331,10 @@ in a menu row because every gesture from the main screen is taken.
   and name, so an adopted life starts exactly like a hatched one (level 1,
   level-1 moves, not frozen) -- do not give it its own copy of the start of a
   life. It is the opposite of `reviveFrom()`, which freezes. `adopt_test`.
+- The egg hatches ONLY on the player's third tap (v3.23). It used to hatch by
+  itself after 3 minutes, live or switched off, which closed the window for
+  choosing its region or adopting almost at once. Neither `tick()` nor
+  `syncClock()` ages an egg, so a hatch is always level 1. `egg_test`.
 
 ## TODO
 

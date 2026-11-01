@@ -3,7 +3,7 @@
 [![Flash in browser](https://img.shields.io/badge/flash-in%20browser-FF6B00?logo=googlechrome&logoColor=white)](https://tubiana.github.io/TamaPoke/web/)
 [![MakerWorld](https://img.shields.io/badge/MakerWorld-3D%20case-00AE42?logo=bambulab&logoColor=white)](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)
 ![Board](https://img.shields.io/badge/board-ESP32--S3%20round%20AMOLED-E7352C?logo=espressif&logoColor=white)
-![Firmware](https://img.shields.io/badge/firmware-v3.22-8A2BE2)
+![Firmware](https://img.shields.io/badge/firmware-v3.23-8A2BE2)
 ![Code](https://img.shields.io/badge/code-MIT-blue)
 ![Languages](https://img.shields.io/badge/languages-6-FFCB05)
 [![Stars](https://img.shields.io/github/stars/tubiana/TamaPoke?style=flat&logo=github&color=yellow)](https://github.com/tubiana/TamaPoke/stargazers)
@@ -227,7 +227,7 @@ downgrades an egg), and having the device on earns its sticker.
 
 ### Eggs & who you get (spawn odds)
 - **First ever pet:** you pick a starter — **Bulbasaur / Charmander / Squirtle**.
-- Hatch the egg: tap it **3×** (or wait — it hatches on its own).
+- Hatch the egg: tap it **3×**. It never hatches on its own and does not age while it waits, so there is all the time you want to pick its region -- or to adopt a caught creature instead.
 - Every later egg rolls a **rarity tier** (over the ~79 base forms that come from eggs):
 
 | Tier | Base chance | After a proper goodbye | # species |
@@ -562,7 +562,7 @@ above). `pack_pmd.py` also takes individual dex numbers, e.g. `pack_pmd.py 7 25`
 both from the real firmware, so re-run it after a UI change.
 
 On first run you **choose a starter** (Bulbasaur / Charmander / Squirtle). After
-that you start with an **egg**. Tap it 3 times or wait and it hatches. From then
+that you start with an **egg**. Tap it 3 times and it hatches -- it waits for you. From then
 on, care for your companion:
 
 **Four stats** that decay: **FOOD**, **JOY**, **ENE** (energy), **HYG** (hygiene).

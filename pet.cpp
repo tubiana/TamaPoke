@@ -139,11 +139,8 @@ void Pet::syncClock(uint32_t nowEpoch) {
 
   const uint8_t offFloor = needFloor(15);
   for (uint32_t i = 0; i < mins; i++) {
+    if (isEgg()) break;   // an egg waits for the player, however long they are away
     ageMinutes++;
-    if (isEgg()) {
-      if (ageMinutes >= 3) hatch();  // eclosiona en tu ausencia
-      continue;
-    }
     bool due = drainDue();   // the needs speed applies switched off too
     if (sleeping) {  // descanso: baja lento y con suelo, igual que en vivo
       energy = clamp100(energy + 6);
@@ -192,14 +189,13 @@ void Pet::tick() {
                             // tiempo corriera aqui, el huevo eclosionaria solo a
                             // los 3 min con la especie sorteada y se perderia la
                             // eleccion del jugador
-  if (!frozen) ageMinutes++;   // a revived companion does not age
-  if (!isEgg() && !frozen && level() > bestLevel) bestLevel = level();
   expGain(sleeping ? EXP_SLEEP_RATE : 1);   // the explore bar: player-wide, egg or not
-
-  if (isEgg()) {
-    if (ageMinutes >= 3) hatch();  // si no lo tocas, eclosiona solo a los 3 min
-    return;
-  }
+  // An egg never hatches on its own: the player hatches it (three taps), so it
+  // can wait while they choose its region or adopt a catch instead. It does
+  // not age either, so whatever hatches starts at level 1 however long it sat.
+  if (isEgg()) return;
+  if (!frozen) ageMinutes++;   // a revived companion does not age
+  if (!frozen && level() > bestLevel) bestLevel = level();
 
   applyAutoSleep();   // put down at 21:00 still goes to bed at 22:00
   const bool due = drainDue();   // OPTIONS > needs speed; every minute at 100%
