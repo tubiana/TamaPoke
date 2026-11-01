@@ -327,8 +327,16 @@ in a menu row because every gesture from the main screen is taken.
   the catch is re-rolled afterwards.
 - `btlAfterTurn()` is the end of every turn, a move turn or a ball turn. A ball
   that breaks is a turn: the foe acts alone and then the same rules run.
-- The Pokedex box is a file, NOT NVS, and NOT part of `EXPORT`/`IMPORT` (yet):
-  a save backup does not include what is in it. `WIPE` deletes it.
+- The Pokedex box is a file, NOT NVS. `EXPORT` (v3.27) prints it after the
+  NVS block as `IMPORTBOX` lines, one creature each with its own crc16, under
+  an `IMPORTBOX START` that says "this backup has a box" -- so an older backup
+  leaves the box alone. The final bare `IMPORT` applies the save AND the box or
+  neither; a damaged box line rejects the whole restore. `console_test`.
+  `WIPE` deletes it.
+- Pokedex TOTALS come from `dexObtainableIn()`, never `DEX_COUNT` or a region's
+  span: the 19 no-art species can never be owned, and counting them made the
+  Pokedex impossible to finish. `registeredCountIn()` counts the same set, so a
+  full Pokedex reads n/n -- `dexcount_test`.
 - Experience lives beside `PartyMon` (`Party::xp[]`), so every Party method that
   moves a creature moves its experience -- `xp_test` checks swap, add, replace
   and reload. A new mover must do the same, or experience will jump between

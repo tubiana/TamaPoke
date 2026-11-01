@@ -37,7 +37,7 @@
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
-#define FW_VERSION "3.26"
+#define FW_VERSION "3.27"
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   LCD_CS, LCD_SCLK, LCD_SDIO0, LCD_SDIO1, LCD_SDIO2, LCD_SDIO3);
@@ -1362,6 +1362,55 @@ void updateBrightness(uint32_t now) {
 
 // ---------- consola serie (provision de SD + depuracion) ----------
 
+// Hex text -> bytes. Returns the count, or -1 for an odd length, a non-hex
+// digit or more than `cap`.
+static int hexToBytes(const String &hex, uint8_t *out, size_t cap) {
+  size_t len = hex.length();
+  if (len & 1) return -1;
+  if (len / 2 > cap) return -1;
+  const char *hs = hex.c_str();
+  auto nyb = [](char c) -> int {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    return -1;
+  };
+  for (size_t i = 0; i < len; i += 2) {
+    int hi = nyb(hs[i]), lo = nyb(hs[i + 1]);
+    if (hi < 0 || lo < 0) return -1;
+    out[i / 2] = (uint8_t)((hi << 4) | lo);
+  }
+  return (int)(len / 2);
+}
+
+// The Pokedex box's half of a restore, held until the commit.
+struct BoxImport {
+  PartyMon *recs = nullptr;
+  uint16_t n = 0;
+  bool seen = false, bad = false;
+  void start() { n = 0; bad = false; seen = true; }
+  // A record is checked whole: length, checksum, a real species, and a
+  // record that says it is that species. A shorter record (an older build's)
+  // is read into the front of the current one, as the box file itself does.
+  bool add(const uint8_t *b, int len) {
+    if (!seen || len < 2 + 2 + 2) return false;
+    size_t body = (size_t)len - 2;
+    uint16_t want = (uint16_t)(b[body] | (b[body + 1] << 8));
+    if (saveCrc16(b, body) != want) return false;
+    int16_t d = (int16_t)(b[0] | (b[1] << 8));
+    if (d < 1 || d > DEX_COUNT) return false;
+    if (!recs) recs = (PartyMon *)malloc(sizeof(PartyMon) * DEX_COUNT);
+    if (!recs || n >= DEX_COUNT) return false;
+    PartyMon m;
+    size_t k = body - 2 < sizeof(PartyMon) ? body - 2 : sizeof(PartyMon);
+    memcpy(&m, b + 2, k);
+    if (m.dex != d) return false;
+    recs[n++] = m;
+    return true;
+  }
+};
+static BoxImport boxIn;
+
 void handleSerial() {
   if (!Serial.available()) return;
   String line = Serial.readStringUntil('\n');
@@ -1526,7 +1575,34 @@ void handleSerial() {
       for (size_t j = i; j < i + 48 && j < n; j++) Serial.printf("%02X", buf[j]);
       Serial.println();
     }
+    // The Pokedex box is a file, not NVS, so it rides as its own lines: one
+    // creature each, with its own checksum. START says "this backup has a
+    // box", so restoring an empty one empties it, while a backup from before
+    // the box existed leaves the box alone.
+    Serial.println("IMPORTBOX START");
+    for (int16_t d = 1; d <= DEX_COUNT; d++) {
+      PartyMon m;
+      if (!dexBoxGet(d, m)) continue;
+      uint8_t rec[2 + sizeof(PartyMon) + 2];
+      rec[0] = (uint8_t)d; rec[1] = (uint8_t)(d >> 8);
+      memcpy(rec + 2, &m, sizeof(PartyMon));
+      uint16_t c = saveCrc16(rec, 2 + sizeof(PartyMon));
+      rec[2 + sizeof(PartyMon)] = (uint8_t)c; rec[3 + sizeof(PartyMon)] = (uint8_t)(c >> 8);
+      Serial.print("IMPORTBOX ");
+      for (size_t j = 0; j < sizeof(rec); j++) Serial.printf("%02X", rec[j]);
+      Serial.println();
+    }
     Serial.println("IMPORT");        // the empty one commits
+  } else if (line.startsWith("IMPORTBOX")) {
+    // IMPORTBOX START   a box follows (even an empty one)
+    // IMPORTBOX <hex>   one creature: dex (2) + its record + crc16 (2)
+    // Held until the commit, which applies the save AND the box or neither.
+    String hex = line.substring(9);
+    hex.trim();
+    if (hex == "START") { boxIn.start(); return; }
+    uint8_t rec[2 + sizeof(PartyMon) + 2 + 8];
+    int n = hexToBytes(hex, rec, sizeof(rec));
+    if (!boxIn.add(rec, n)) { Serial.println("IMPORTBOX BAD"); boxIn.bad = true; }
   } else if (line.startsWith("IMPORT")) {
     // IMPORT <hex>   append a chunk
     // IMPORT         commit what has been appended
@@ -1552,9 +1628,16 @@ void handleSerial() {
       return;                        // silent while collecting
     }
     if (!inN) { Serial.println("IMPORT EMPTY"); return; }
-    bool ok = saveImport(in, inN);
+    bool ok = !boxIn.bad && saveImport(in, inN);
     Serial.println(ok ? "IMPORT OK" : "IMPORT REJECTED");
     inN = 0;
+    if (ok && boxIn.seen) {          // the save went in: now the box, replaced whole
+      dexBoxWipe();
+      for (uint16_t i = 0; i < boxIn.n; i++) dexBoxPut(boxIn.recs[i]);
+      Serial.printf("IMPORTBOX %u\n", (unsigned)boxIn.n);
+    }
+    boxIn.start();
+    boxIn.seen = false;
     if (ok) { Serial.println("DONE"); delay(100); ESP.restart(); }
   } else if (line == "WIPE") {
     pet.factoryReset();     // borra NVS y reinicia -> partida nueva (eleccion de inicial)
@@ -1606,7 +1689,7 @@ void handleSerial() {
     Serial.println();
     Serial.println("DONE");
   } else if (line == "REG") {
-    Serial.printf("pokedex %u/%u:", pet.registeredCount(), DEX_COUNT);
+    Serial.printf("pokedex %u/%u:", pet.registeredCount(), dexObtainable());
     for (int i = 1; i <= DEX_COUNT; i++)
       if (pet.isRegistered(i)) Serial.printf(" %d", i);
     Serial.println();
@@ -2901,7 +2984,7 @@ void render() {
       gfx->print(rar);
     }
     char reg[24];
-    snprintf(reg, sizeof(reg), T(S_POKEDEX_FMT), pet.registeredCount(), DEX_COUNT);
+    snprintf(reg, sizeof(reg), T(S_POKEDEX_FMT), pet.registeredCount(), dexObtainable());
     gfx->fillRect(0, 312, 466, 154, gNight ? UI_BG_NIGHT : UI_BG_DAY);
     gfx->setTextColor(inkColor());
     gfx->setTextSize(2);
@@ -5224,7 +5307,7 @@ static void renderPlayerBadges() {
   snprintf(l, sizeof(l), T(S_STREAK_FMT), pet.streak, pet.bestStreak);
   gfx->setCursor(CX - (int)strlen(l) * 6, 286);
   gfx->print(l);
-  snprintf(l, sizeof(l), T(S_POKEDEX_FMT), pet.registeredCount(), DEX_COUNT);
+  snprintf(l, sizeof(l), T(S_POKEDEX_FMT), pet.registeredCount(), dexObtainable());
   gfx->setCursor(CX - (int)strlen(l) * 6, 312);
   gfx->print(l);
   snprintf(l, sizeof(l), T(S_PARTY_FMT), party.count());
@@ -6321,7 +6404,7 @@ static void renderRegionPick(uint8_t mode) {
   char ttl[40];
   if (mode == RPICK_FOR_START) snprintf(ttl, sizeof(ttl), "%s", T(S_CHOOSE_REGION));
   else if (forGyms) snprintf(ttl, sizeof(ttl), "%s", T(S_GYMS));
-  else snprintf(ttl, sizeof(ttl), T(S_POKEDEX_FMT), pet.registeredCount(), DEX_COUNT);
+  else snprintf(ttl, sizeof(ttl), T(S_POKEDEX_FMT), pet.registeredCount(), dexObtainable());
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
   gfx->setCursor(CX - (int)strlen(ttl) * 6, 48);
@@ -6354,7 +6437,7 @@ static void renderRegionPick(uint8_t mode) {
     else if (mode == RPICK_FOR_DEX)
       snprintf(sub, sizeof(sub), "%u/%u",
                pet.registeredCountIn(REGIONS[i].lo, REGIONS[i].hi),
-               (unsigned)(REGIONS[i].hi - REGIONS[i].lo + 1));
+               (unsigned)dexObtainableIn(REGIONS[i].lo, REGIONS[i].hi));
     if (sub[0]) {
       gfx->setTextColor(UI_TRACK);
       gfx->setTextSize(2);
@@ -6578,7 +6661,7 @@ static void menuRowLabel(int i, char *out, size_t n) {
   switch (i) {
     case MENU_STATS: snprintf(out, n, "%s", T(S_STATS)); break;
     case MENU_EXPLORE: snprintf(out, n, "%s", T(S_EXPLORE)); break;
-    case MENU_POKEDEX: snprintf(out, n, T(S_POKEDEX_FMT), pet.registeredCount(), DEX_COUNT); break;
+    case MENU_POKEDEX: snprintf(out, n, T(S_POKEDEX_FMT), pet.registeredCount(), dexObtainable()); break;
     case MENU_SETTINGS: snprintf(out, n, "%s", T(S_SETTINGS)); break;
     case MENU_RETIRE: snprintf(out, n, "%s", T(S_RETIRE)); break;
     default: snprintf(out, n, "%s", T(S_CLOSE)); break;
@@ -7165,7 +7248,7 @@ void renderGallery() {
   char head[32];
   const RegionInfo &grg = REGIONS[galleryRegion % GAL_REGIONS];
   snprintf(head, sizeof(head), "%s %u/%u", grg.name,
-           pet.registeredCountIn(grg.lo, grg.hi), (unsigned)GAL_SPAN);
+           pet.registeredCountIn(grg.lo, grg.hi), (unsigned)dexObtainableIn(grg.lo, grg.hi));
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(3);
   gfx->setCursor(CX - strlen(head) * 9, 36);

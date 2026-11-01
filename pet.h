@@ -111,6 +111,15 @@ uint8_t catchChancePct(int16_t dex, uint16_t hp, uint16_t maxHp, bool kid);
 // stat formula as anything that hatches -- through a scratch Pet that was never
 // begin()'d and so cannot save. The birthday present and every wild creature
 // are made here, so the two cannot disagree about what a creature is.
+// How many species from lo to hi a player can ever own: every one with art.
+// The 19 in noart.h keep their dex numbers (they are positional in saves) but
+// can never hatch, be met or be evolved into, so a Pokedex counted out of all
+// 809 could never be finished. EVERY "n/total" on screen asks this, and
+// registeredCount()/registeredCountIn() count the same species, so the two
+// halves of a counter can never disagree.
+uint16_t dexObtainableIn(uint16_t lo, uint16_t hi);
+inline uint16_t dexObtainable() { return dexObtainableIn(1, DEX_COUNT); }
+
 bool makeMon(int16_t dex, uint16_t lvl, bool shiny, PartyMon &out);
 // Eevee's branches this player can be handed right now (EEVEE_EVO_COUNT room).
 uint8_t eeveeBranches(int16_t *out);
@@ -367,12 +376,9 @@ public:
   int16_t eggByRegion[REGION_COUNT] = { 0 };
   void setRegion(uint8_t r);
   const char *regionName() const { return REGIONS[region % REGION_COUNT].name; }
-  // How much of one region's dex is filled in, for the Pokedex header.
-  uint16_t registeredCountIn(uint16_t lo, uint16_t hi) const {
-    uint16_t n = 0;
-    for (uint16_t d = lo; d <= hi && d <= DEX_COUNT; d++) if (isRegistered(d)) n++;
-    return n;
-  }
+  // How much of one region's dex is filled in, for the Pokedex header. Only
+  // species that can be obtained count -- see dexObtainableIn().
+  uint16_t registeredCountIn(uint16_t lo, uint16_t hi) const;
 
   uint8_t avatar = 0;       // which player sprite, 0..3
   // Kanto's ladder, under the keys it has always used. Johto and Hoenn live in

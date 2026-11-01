@@ -351,10 +351,10 @@ def build(lang, T):
     d.new(T['p_explore'], GREEN, T['explore_intro'])
     y = d.y; s = 165
     d.img(shot('menu', L, marks=((1, 233, 164, 0, 80, 164),)), xs[0], y, s)
-    d.img(shot('explmap', L, marks=((2, 233, 52, 0, 120, 52), (3, 128, 204, 34))), xs[1], y, s)
+    d.img(shot('explmap', L, marks=((2, 233, 52, 0, 346, 52), (3, 128, 204, 34), (5, 113, 46, 30))), xs[1], y, s)
     d.img(shot('explscene', L, marks=((4, 276, 200, 44),)), xs[2], y, s)
     y -= s + 6
-    y = d.legend([(1, T['e1']), (2, T['e2']), (3, T['e3']), (4, T['e4'])], M, y, CW, 13)
+    y = d.legend([(1, T['e1']), (2, T['e2']), (3, T['e3']), (4, T['e4']), (5, T['e5'])], M, y, CW, 13)
     s = 150
     d.img(shot('explocean', L), M + 40, y, s); d.img(shot('explvolcano', L), W - M - 40 - s, y, s)
     d.caption(T['ocean_cap'], M + 40, y - s, s); d.caption(T['volcano_cap'], W - M - 40 - s, y - s, s)
@@ -370,8 +370,8 @@ def build(lang, T):
     y -= s + 6
     y = d.legend([(1, T['c1']), (2, T['c2']), (3, T['c3'])], M, y, CW, 13)
     s = 190
-    d.img(shot('dexbox', L, marks=((4, 233, 367, 0, 80, 367),)), M, y, s)
-    d.legend([(4, T['c4'])], M + s + 16, y - 20, CW - s - 16, 13)
+    d.img(shot('dexbox', L, marks=((4, 152, 367, 0, 40, 367), (5, 314, 367, 0, 426, 367))), M, y, s)
+    d.legend([(4, T['c4']), (5, T['c5'])], M + s + 16, y - 20, CW - s - 16, 13)
     y -= s + 10
     d.box(T['tip'], T['catch_tip'], M, y, CW, YEL)
 

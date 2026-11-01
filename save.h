@@ -47,3 +47,6 @@ bool saveImport(const uint8_t *in, size_t n);
 
 // Roughly what saveExport needs, for sizing a buffer.
 size_t saveExportSize();
+
+// The checksum the blob carries, shared with the Pokedex box's backup lines.
+uint16_t saveCrc16(const uint8_t *p, size_t n);

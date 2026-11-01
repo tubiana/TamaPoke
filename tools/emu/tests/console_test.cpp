@@ -11,6 +11,7 @@
 #include "pet.h"
 #include "party.h"
 #include "save.h"
+#include "dexbox.h"
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -70,6 +71,10 @@ int main(){
   for (int i=0;i<3;i++){ PartyMon m; m.dex=100+i; m.level=44+i;
     m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=17; party.replaceAt(i,m); }
   pet.renameTrainer("ASH");        // persists everything above
+  // two catches in the Pokedex box: a file, not NVS, and backed up all the same
+  dexBoxWipe();
+  { PartyMon a; makeMon(25, 31, true, a); strcpy(a.nick, "SPARKY"); dexBoxPut(a);
+    PartyMon b; makeMon(133, 12, false, b); dexBoxPut(b); }
 
   std::string out = runConsole({"EXPORT"});
   ck(out.find("# TamaPoke save") != std::string::npos, "EXPORT says what it is");
@@ -90,6 +95,7 @@ int main(){
 
   // --- wipe, then paste the block straight back
   pet.factoryReset();
+  dexBoxWipe();                    // WIPE takes the box too
   Pet gone; gone.begin();
   ck(strcmp(gone.trainerName,"ASH") != 0, "the wipe really took the save");
 
@@ -107,6 +113,29 @@ int main(){
      "and the IVs, badges and streak");
   ck(q2.count()==3 && q2.slots[1].dex==101 && q2.slots[1].level==45,
      "and the party");
+  {
+    PartyMon a, b;
+    ck(dexBoxCount() == 2 && dexBoxGet(25, a) && dexBoxGet(133, b),
+       "and the Pokedex box, both catches");
+    ck(a.level == 31 && a.shiny && !strcmp(a.nick, "SPARKY") && b.level == 12,
+       "with their levels, shininess and names");
+  }
+
+  // a mistyped digit in a BOX line rejects the whole restore, save included
+  {
+    std::vector<std::string> mangled = back;
+    for (auto &ln : mangled)
+      if (ln.rfind("IMPORTBOX ", 0) == 0 && ln != "IMPORTBOX START") {
+        size_t k = ln.size() / 2; ln[k] = (ln[k] == 'A') ? 'B' : 'A'; break;
+      }
+    dexBoxWipe();
+    gRestarted = false;
+    std::string rb = runConsole(mangled);
+    ck(rb.find("IMPORTBOX BAD") != std::string::npos && rb.find("IMPORT REJECTED") != std::string::npos,
+       "a damaged box line is caught, and the restore refused");
+    ck(!gRestarted && dexBoxCount() == 0, "with nothing applied");
+    runConsole(back);                // put it right for what follows
+  }
 
   // --- a mistyped paste must not be applied
   {

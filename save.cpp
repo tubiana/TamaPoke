@@ -54,6 +54,8 @@ static uint16_t crc16(const uint8_t *p, size_t n) {
   return c;
 }
 
+uint16_t saveCrc16(const uint8_t *p, size_t n) { return crc16(p, n); }
+
 static uint8_t widthOf(uint8_t kind) {
   switch (kind) {
     case SK_U8: case SK_I8: case SK_BOOL: return 1;
