@@ -187,6 +187,8 @@ enum StrId : uint8_t {
   S_XP_FMT,  // "%s +%u XP"
   S_GREW_FMT,  // "%s grew to Lv.%u!"
   S_EVOLVED_FMT,  // "%s became %s!"
+  S_ADOPT,  // Pokedex page, while an egg waits: raise this one instead
+  S_ADOPT_SURE,  // the second tap that confirms it
   STR_COUNT
 };
 

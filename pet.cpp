@@ -319,6 +319,19 @@ void Pet::reviveFrom(const PartyMon &m) {
   save();
 }
 
+bool Pet::adoptFrom(const PartyMon &m) {
+  if (!isEgg() || starterPick || m.empty()) return false;
+  eggTarget = m.dex;
+  eggShiny = m.shiny != 0;
+  hatch();   // the same start of a life an egg gets -- one path, not two
+  // ...but the individual that was caught, not a new roll
+  ivAtk = m.ivAtk; ivDef = m.ivDef; ivSpe = m.ivSpe; ivHp = m.ivHp;
+  strncpy(nick, m.nick, sizeof(nick) - 1);
+  nick[sizeof(nick) - 1] = 0;
+  save();
+  return true;
+}
+
 void Pet::snapshotForParty() {
   endedKind = CER_NONE;
   if (isEgg()) return;
