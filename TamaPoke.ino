@@ -37,7 +37,7 @@
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
-#define FW_VERSION "3.25"
+#define FW_VERSION "3.26"
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   LCD_CS, LCD_SCLK, LCD_SDIO0, LCD_SDIO1, LCD_SDIO2, LCD_SDIO3);
@@ -5761,6 +5761,12 @@ static const int16_t EXP_SPOT_Y[EXP_SPOTS] = { 208, 170, 214, 176, 244 };
 #define EXP_BACK_H 46
 #define EXP_PIN_R 30               // map pin hit radius
 #define EXP_TOP_H 70               // the map's title plate: tap to leave
+// ...and the round back arrow beside it, which says so. Asked for from a child's
+// point of view: a plate that silently leaves when tapped is not a way out
+// anyone finds, and the swipe is invisible.
+#define EXP_EXIT_X (CX - 120)
+#define EXP_EXIT_Y 46
+#define EXP_EXIT_R 22
 
 enum : uint8_t { SPOT_GRASS, SPOT_SAND, SPOT_ROCK, SPOT_WATER, SPOT_SNOW, SPOT_LAVA };
 static uint8_t spotKind(uint8_t pl) {
@@ -5893,6 +5899,10 @@ static void renderExploreMap() {
   gfx->setCursor(CX - (int)strlen(T(S_EXPLORE)) * 6, 20);
   gfx->print(T(S_EXPLORE));
   drawExploreCharges(52);
+  gfx->fillCircle(EXP_EXIT_X, EXP_EXIT_Y, EXP_EXIT_R, UI_WHITE);
+  gfx->drawCircle(EXP_EXIT_X, EXP_EXIT_Y, EXP_EXIT_R, UI_INK);
+  gfx->fillTriangle(EXP_EXIT_X - 10, EXP_EXIT_Y, EXP_EXIT_X + 6, EXP_EXIT_Y - 11,
+                    EXP_EXIT_X + 6, EXP_EXIT_Y + 11, UI_INK);
   for (uint8_t p = 0; p < PLACE_COUNT; p++) {
     int x = MAP_PINS[p].x * 2, y = MAP_PINS[p].y * 2;
     bool open = placeCount(p) > 0;
@@ -6050,7 +6060,10 @@ void exploreTap(int16_t x, int16_t y) {
     return;
   }
   if (expPlace < 0) {             // the map
-    if (y < EXP_TOP_H && x > CX - 100 && x < CX + 100) { closeExplore(); sfxPlay(SFX_TAP); return; }
+    int ex = x - EXP_EXIT_X, ey = y - EXP_EXIT_Y, er = EXP_EXIT_R + 12;   // a finger, not a pixel
+    if ((y < EXP_TOP_H && x > CX - 100 && x < CX + 100) || ex * ex + ey * ey <= er * er) {
+      closeExplore(); sfxPlay(SFX_TAP); return;
+    }
     int best = -1, bd = EXP_PIN_R * EXP_PIN_R + 1;
     for (uint8_t p = 0; p < PLACE_COUNT; p++) {
       int dx = x - MAP_PINS[p].x * 2, dy = y - (MAP_PINS[p].y * 2 + 8);   // pin + its label
@@ -6572,11 +6585,21 @@ static void menuRowLabel(int i, char *out, size_t n) {
   }
 }
 
+// Darkens the whole frame behind a modal panel: every pixel at half (a quarter
+// at night). It used to be a black line on every other row, and on the board
+// the panel blanked for an instant each time a finger touched or left the glass
+// while that pattern was up. A real dim reads the same and has no stripes.
+void dimFrame() {
+  uint16_t *b = gfx->getFramebuffer();
+  const uint16_t mask = gNight ? 0x39E7 : 0x7BEF;
+  const int sh = gNight ? 2 : 1;
+  for (uint32_t i = 0; i < 466UL * 466UL; i++) b[i] = (b[i] >> sh) & mask;
+}
+
 void drawMenu() {
   // dim the game behind the panel so the overlay reads as modal, and so it is
   // obvious that tapping the darkened area is a way out
-  for (int y = 0; y < 466; y += 2)
-    gfx->drawFastHLine(0, y, 466, gNight ? 0x0000 : 0x2104);
+  dimFrame();
 
   gfx->fillRoundRect(MENU_X, MENU_Y, MENU_W, MENU_H, 18, UI_WHITE);
   gfx->drawRoundRect(MENU_X, MENU_Y, MENU_W, MENU_H, 18, UI_INK);
@@ -6607,8 +6630,11 @@ static uint8_t trainPct(uint8_t cur, uint8_t cap) {
 }
 
 void renderTrain() {
-  for (int y = 0; y < 466; y += 2)
-    gfx->drawFastHLine(0, y, 466, gNight ? 0x0000 : 0x2104);
+  // Nothing redraws the scene under this panel, so the frame is darkened once,
+  // when the panel opens; darkening it every frame would fade it to black.
+  static uint32_t lastFrame = 0;
+  if (millis() - lastFrame > 400) dimFrame();
+  lastFrame = millis();
 
   gfx->fillRoundRect(TRAIN_X, TRAIN_Y, TRAIN_W, TRAIN_H, 18, UI_WHITE);
   gfx->drawRoundRect(TRAIN_X, TRAIN_Y, TRAIN_W, TRAIN_H, 18, UI_INK);
@@ -7161,11 +7187,16 @@ void renderGallery() {
           gfx->print("*");
         }
       } else {
+        // No thumbnail: either the pack is not on the card yet, or the species
+        // has no art anywhere (noart.h) -- it can then never hatch, be met or be
+        // evolved into. A framed number says "there is one here" instead of a
+        // gap a child reads as a bug.
         char num[6];
         snprintf(num, sizeof(num), "%d", dex);
-        gfx->setTextColor(UI_TRACK);
+        gfx->drawRoundRect(x + 8, y + 8, GAL_CELL - 16, GAL_CELL - 16, 10, 0x8410);
+        gfx->setTextColor(0x8410);
         gfx->setTextSize(2);
-        gfx->setCursor(x + 24, y + 32);
+        gfx->setCursor(x + GAL_CELL / 2 - (int)strlen(num) * 6, y + 32);
         gfx->print(num);
       }
     }

@@ -41,6 +41,7 @@ public:
   bool begin(uint32_t = 0) { return true; }
   void flush() { frameReady = true; }
   const uint16_t *buffer() const { return fb.data(); }
+  uint16_t *getFramebuffer() { return fb.data(); }   // the real Arduino_Canvas API
 
   inline void px(int x, int y, uint16_t c) {
     if (x < 0 || y < 0 || x >= _w || y >= _h) return;
