@@ -228,6 +228,12 @@ that have each cost a real bug:
 - **A missing `gfx->flush()`.** `--shot` reads `gfx->buffer()` directly and
   never consults `frameReady`, so a frozen panel photographs perfectly. That is
   what `flush_test` is for.
+- **The audio TASK.** The emulator stubs it, so a loop on core 0 that neither
+  renders nor sleeps is invisible here and reboots the board through the task
+  watchdog 5 s later (`task_wdt: CPU 0: audio`). It shipped in 3.21-3.23:
+  stopping music mid-note left the synth busy and the idle branch never
+  rendered it. Every decision that loop makes now lives in `audio_mix.h`
+  (`musicStep`, `quietStep`), where `loud_test` can drive it.
 
 ## Testing
 

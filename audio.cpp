@@ -240,8 +240,11 @@ static void audioTask(void *) {
     }
 
     if (m == MUS_NONE) {
-      if (ampOn && !gSyn.busy()) { digitalWrite(PA, LOW); ampOn = false; }
+      // every pass either renders or sleeps on the queue: see quietStep()
+      uint32_t tail = quietStep(gSyn, playing != MUS_NONE);
       playing = MUS_NONE; cur = MusicCursor();
+      if (tail) { pump(tail); continue; }
+      if (ampOn) { digitalWrite(PA, LOW); ampOn = false; }
       continue;
     }
 

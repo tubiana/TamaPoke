@@ -71,6 +71,19 @@ struct MusicCursor { uint16_t i1 = 0, i2 = 0; uint32_t at1 = 0, at2 = 0, clock =
 // whatever screen came next. The intro is the first ~6.9 s.
 #define FANFARE_MS 7000
 
+// What the audio task does while no music is wanted: how many ms of synth to
+// render (something is still ringing), or 0 when all is quiet and the task may
+// sleep on its queue. `stopped` says music was playing until now.
+//
+// It must never say "nothing to do" while the synth is busy: the task then
+// loops without rendering, the notes never run out, and it spins on core 0
+// until the task watchdog reboots the board. That shipped in 3.21 -- music cut
+// off mid-note (leaving exploring, the fanfare's 7 s cap) left its notes held.
+static inline uint32_t quietStep(GbSynth &syn, bool stopped) {
+  if (stopped) syn.allOff();   // cut mid-note: its notes would hold their full length
+  return syn.busy() ? 10 : 0;
+}
+
 static inline uint32_t musicStep(GbSynth &syn, const MusicTrack &t, bool loop, MusicCursor &c) {
   if (!loop && c.clock >= FANFARE_MS) return 0;
   if (c.clock >= c.at1) {

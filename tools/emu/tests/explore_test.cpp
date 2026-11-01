@@ -177,6 +177,9 @@ int main(){
   ck(catchIt(), "a ball holds sooner or later");
   ck(dexBoxHas(dex), "the catch lands in the Pokedex box");
   ck(pet.isRegistered(dex), "and in the Pokedex");
+  { Pet again; again.begin();    // what a reboot right after the catch would load
+    ck(again.isRegistered(dex) && again.registeredCount() == pet.registeredCount(),
+       "and it is SAVED: a reboot right after still has it in the Pokedex"); }
   PartyMon got; dexBoxGet(dex, got);
   ck(got.level == fought.level && got.ivAtk == fought.ivAtk && got.moves[0] == fought.moves[0],
      "the creature kept is exactly the one fought");

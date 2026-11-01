@@ -81,6 +81,21 @@ int main(){
     ck(t >= 5000 && t <= FANFARE_MS + 100, "the victory fanfare plays its intro and ends by itself");
   }
 
+  // Music stopping must never leave the audio task with nothing to render and
+  // the synth still busy: it then spins on core 0 and the task watchdog reboots
+  // the board. Found on a board, leaving exploring after a catch (3.21-3.23).
+  {
+    GbSynth q; MusicCursor qc;
+    for (int i = 0; i < 12; i++) { uint32_t st = musicStep(q, MUSIC_TBL[0], true, qc); pump(q, st); qc.clock += st; }
+    musicStep(q, MUSIC_TBL[0], true, qc);   // notes just started: where a stop lands
+    ck(q.busy(), "mid-theme the synth is busy (the case that matters)");
+    ck(quietStep(q, true) == 0 && !q.busy(), "music cut off mid-note leaves nothing ringing");
+    cueNote(q, SFX_HEART, 0, hzToGb(880), 150);
+    int passes = 0; uint32_t st;
+    while ((st = quietStep(q, false)) && passes < 1000) { pump(q, st); passes++; }
+    ck(st == 0 && passes > 0 && passes < 100, "a cue still ringing is rendered out, then the task may sleep");
+  }
+
   // The synth against a cry, at the same volume. Reported from the board: the
   // blips and the music drowned the cries at every volume. A cry is a real
   // waveform that only touches its peak for an instant, so it has to PEAK well
