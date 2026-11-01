@@ -284,6 +284,9 @@ On hardware, verify over the serial console (115200):
   way to reach them — `SHINY` just flips the flag on an already-hatched pet
 - `BYE` / `RUN` / `ABANDON` — the three endings · `BEEP` audio · `LS` / `PUT` SD files
 - `TIME <epoch>` / `RTCSET <epoch>` — offline-progression and clock paths
+- `OUTINGS` refill the explore bar · `FULL` every need to 100 · `REG` the
+  Pokedex · `DEXBOX` the Pokedex box, flagging any species it holds that the
+  Pokedex does not (the 3.24 save bug's signature)
 
 To exercise long-horizon logic in minutes, temporarily lower `PET_TICK_MS`,
 `MINUTES_PER_LEVEL` and `FAREWELL_AGE_MIN` in `pet.h`.

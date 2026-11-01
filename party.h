@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include <Preferences.h>
+#include "ownprefs.h"
 
 // The party: pets that finished their life and were kept, rather than being
 // dissolved into a single Pokedex bit like every previous ending did.
@@ -96,7 +97,7 @@ public:
   uint16_t spdOf(const PartyMon &m) const;
 
 private:
-  Preferences prefs;
+  OwnedPrefs prefs;     // a copy never shares the handle: see ownprefs.h
 };
 
 extern Party party;
