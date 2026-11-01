@@ -17,9 +17,11 @@ static int bad=0;
 static void ck(bool ok,const char*w){printf("%s  %s\n",ok?"PASS":"FAIL",w); if(!ok)bad++;}
 
 #define MASTER 5
+// exactly what audio.cpp's pump() hands the codec: rendered, then levelled
 static std::vector<int16_t> pump(GbSynth &s, uint32_t ms) {
   std::vector<int16_t> out((size_t)ms * GB_RATE / 1000);
   s.render(out.data(), out.size(), MASTER);
+  synthLevel(out.data(), out.size());
   return out;
 }
 static double rms(const std::vector<int16_t> &v) {
@@ -69,6 +71,17 @@ int main(){
   ck(peak(over) <= uiPeak * 0.8, "a move's cue on top of the music stays under a UI cue");
   ck(rms(hit) <= uiRms * 0.6, "the impact noise sits under a UI cue");
   ck(musicLevel(15) >= 1 && musicLevel(11) < 11, "the music is scaled, and a loud note never rounds to silence");
+
+  // The synth against a cry, at the same volume. Reported from the board: the
+  // blips and the music drowned the cries at every volume. A cry is a real
+  // waveform that only touches its peak for an instant, so it has to PEAK well
+  // above a square-wave blip to sound as loud -- at least twice as high -- and
+  // the music, which never stops, is judged by its energy: a quarter of that.
+  int cryPeak = CRY_PEAK * CRY_GAIN * MASTER;
+  printf("    cry peak %d | ui cue peak %d | music peak %d\n", cryPeak, uiPeak, peak(music));
+  ck(uiPeak * 2 <= cryPeak, "a cry peaks at least twice as high as a UI blip");
+  ck(musRms * 4 <= cryPeak, "...and the battle music's steady energy sits far under a cry");
+  ck(uiPeak * 4 >= cryPeak, "...but a blip still reaches a quarter of a cry: turned down, not gone");
 
   printf("%s\n", bad ? "FAIL" : "PASS");
   return bad ? 1 : 0;

@@ -20,6 +20,24 @@
 #define NOISE_LEVEL 9          // the impact / faint percussion
 #define MUSIC_LEVEL_PCT 60     // the music voices, as a share of the track's own volume
 
+// The synth against the CRIES. Everything above is the synth's balance with
+// itself; this is the whole synth against a recorded cry, and it was wrong the
+// other way: on the board the blips and the music were far louder than the
+// cries at every volume, low included. A square wave is harsh and full of the
+// harmonics the ear is most sensitive to, and a cry only touches its peak for
+// an instant, so a cry with the higher peak still SOUNDED quieter. Every synth
+// sample is scaled by SYNTH_LEVEL_PCT on its way to the codec, and a cry plays
+// at CRY_GAIN per unit of volume (normalised to +-121 by pack_cries.py, so
+// 121 * CRY_GAIN * 10 must stay under 32767 or volume 10 clips).
+#define SYNTH_LEVEL_PCT 40
+#define CRY_GAIN 20
+#define CRY_PEAK 121
+static_assert(CRY_PEAK * CRY_GAIN * 10 <= 32767, "a cry at volume 10 would clip");
+
+static inline void synthLevel(int16_t *buf, size_t n) {
+  for (size_t i = 0; i < n; i++) buf[i] = (int16_t)((int32_t)buf[i] * SYNTH_LEVEL_PCT / 100);
+}
+
 // The SFX tables are written in Hz; the synth speaks the Game Boy's frequency
 // register. Converting here means the cues did not have to be rewritten.
 static inline uint16_t hzToGb(uint16_t hz) {

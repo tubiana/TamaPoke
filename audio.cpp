@@ -175,17 +175,15 @@ static void pump(uint32_t ms) {
   while (left) {
     size_t n = left > 256 ? 256 : left;
     gSyn.render(mono, n, gVol);
+    synthLevel(mono, n);                // under the cries: audio_mix.h
     for (size_t i = 0; i < n; i++) { buf[i * 2] = mono[i]; buf[i * 2 + 1] = mono[i]; }
     i2s.write((uint8_t *)buf, n * 4);
     left -= n;
   }
 }
 
-// Loudness of a cry against the synth. A lone synth voice peaks at 15 * 150 *
-// volume; a cry normalised to +-121 at this gain lands a little under it,
-// because a real waveform carries far more energy than a square wave at the
-// same peak and reads as louder. Untuned on a board -- expect to adjust.
-#define CRY_GAIN 14
+// A cry plays at CRY_GAIN per unit of volume, set in audio_mix.h beside the
+// synth's own level so the two are balanced in one place.
 
 static void playPcm(const int8_t *pcm, uint32_t len) {
   if (!gVol) return;   // muted: a cry has no timing anything waits on
