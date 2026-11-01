@@ -37,7 +37,7 @@
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
-#define FW_VERSION "3.20"
+#define FW_VERSION "3.21"
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   LCD_CS, LCD_SCLK, LCD_SDIO0, LCD_SDIO1, LCD_SDIO2, LCD_SDIO3);
@@ -265,6 +265,7 @@ void renderExplore();
 void exploreTap(int16_t x, int16_t y);
 void exploreAfterBattle();
 void openExplore();
+void closeExplore();
 void drawBallIcon(int cx, int cy, int r);
 bool startWildBattle(int16_t dex, uint8_t lvl, uint8_t place);
 const BackScene &placeScene(uint8_t pl, bool night);
@@ -1707,7 +1708,7 @@ void onSwipeV(int dir) {
   if (battleOpen) return;   // no swiping out of a fight
   if (exploreOpen) {        // a scene goes back to the map; the map leaves
     if (expKeepAsk) return;
-    if (expPlace >= 0) expPlace = -1; else exploreOpen = false;
+    if (expPlace >= 0) expPlace = -1; else closeExplore();
     return;
   }
   if (pickOpen) { pickOpen = false; return; }
@@ -2081,7 +2082,7 @@ void onSwipe(int dir) {
   if (battleOpen) return;   // no swiping out of a fight
   if (exploreOpen) {        // a scene goes back to the map; the map leaves
     if (expKeepAsk) return;
-    if (expPlace >= 0) expPlace = -1; else exploreOpen = false;
+    if (expPlace >= 0) expPlace = -1; else closeExplore();
     return;
   }
   if (pickOpen) {   // horizontal pages the candidates, as everywhere else
@@ -4115,7 +4116,7 @@ static void drawBattleBack() {
   uint8_t a = battleArena();
   if (a < ARENA_COUNT) { drawBack(ARENAS[a], 30); return; }
   int16_t dex = btlFoe.dex;
-  if (dex < 1 || dex > DEX_COUNT) { gfx->fillCircle(CX, CY, 231, UI_BG_DAY); return; }
+  if (dex < 1 || dex > DEX_COUNT) { gfx->fillRect(0, 30, 466, 224, UI_BG_DAY); return; }
   uint8_t bi = DEX_TBL[dex].biome;
   if (bi >= BACK_BIOMES) bi = 0;
   drawBack(BACKS[bi][sceneIsNight() ? 1 : 0], 30);
@@ -4787,7 +4788,7 @@ void renderWin() {
 void renderBattle() {
   if (btlWinUntil) { renderWin(); return; }
   btlEaseBars();
-  gfx->fillScreen(RGB565_BLACK);
+  gfx->fillRect(0, 0, 466, 30, RGB565_BLACK);   // not fillScreen: see renderExploreMap()
   drawBattleBack();
   // the lower band stays flat so the move grid and the HP text keep their
   // contrast against it
@@ -5789,6 +5790,14 @@ void openExplore() {
   expMsgUntil = 0;
 }
 
+// Every way out of exploring comes through here. The fanfare after a catch is
+// welcome on the map; it is not welcome following the player home.
+void closeExplore() {
+  exploreOpen = false;
+  expPlace = -1;
+  audioMusic(MUS_NONE);
+}
+
 // One hiding spot. `stir` is how far through its stirring it is (0 = still).
 static void drawSpot(uint8_t kind, int x, int y, bool stir, uint32_t now) {
   int dx = stir ? (int)(sinf(now * 0.025f) * 4) : 0;
@@ -5861,8 +5870,12 @@ static void drawExploreNext(int y) {
   gfx->print(t);
 }
 
+// NO fillScreen(BLACK) before drawing, on any of these: the panel's DMA can
+// still be sending the previous frame from this buffer, and a slow draw over
+// black flashes the AMOLED black -- the reason drawScene() and renderGame()
+// never clear first. The map covers all 466x466; the scenes cover all but the
+// top band, which is filled on its own.
 static void renderExploreMap() {
-  gfx->fillScreen(RGB565_BLACK);
   drawBack(MAP_ART, 0);
   // the title plate: what this is, and the outings in hand
   gfx->fillRoundRect(CX - 96, 12, 192, 58, 14, UI_WHITE);
@@ -5912,7 +5925,7 @@ static void renderExploreScene() {
     expActiveUntil = now + EXP_STIR_MS;
     expNextAt = expActiveUntil + 700 + random(1400);
   }
-  gfx->fillScreen(RGB565_BLACK);
+  gfx->fillRect(0, 0, 466, 30, RGB565_BLACK);
   drawBack(placeScene((uint8_t)expPlace, sceneIsNight()), 30);
   gfx->fillRect(0, 254, 466, 212, UI_BG_DAY);
   uint8_t kind = spotKind((uint8_t)expPlace);
@@ -5973,13 +5986,25 @@ void exploreAfterBattle() {
   btlCaught = false;
   expCatch = btlWildMon;
   pet.registerCaught(expCatch.dex, expCatch.shiny);
+  // Said on the console every time, because "it was not in the Pokedex" is not
+  // something anyone can act on without knowing which of these happened.
   if (!dexBoxReady()) {
     // no storage: the old way, the team then the box, or it cannot be kept
-    if (!party.add(expCatch) && !party.boxAdd(expCatch)) expSay("%s", T(S_GIFT_FULL));
+    bool kept = party.add(expCatch) || party.boxAdd(expCatch);
+    if (!kept) expSay("%s", T(S_GIFT_FULL));
+    const char *where = kept ? "went to the party/box" : "NOT KEPT";
+    Serial.printf("catch: %s (dex %d) -- Pokedex box NOT mounted, %s\n", DEX_TBL[expCatch.dex].name, expCatch.dex, where);
     return;
   }
-  if (dexBoxHas(expCatch.dex)) { expKeepAsk = true; return; }
-  dexBoxPut(expCatch);
+  if (dexBoxHas(expCatch.dex)) {
+    expKeepAsk = true;
+    Serial.printf("catch: %s (dex %d) -- already in the box, asking\n", DEX_TBL[expCatch.dex].name, expCatch.dex);
+    return;
+  }
+  bool put = dexBoxPut(expCatch);
+  unsigned lv = expCatch.level, n = dexBoxCount();
+  Serial.printf("catch: %s (dex %d) lv %u -- Pokedex box %s (%u stored)\n", DEX_TBL[expCatch.dex].name, expCatch.dex, lv, put ? "ok" : "WRITE FAILED", n);
+  if (!put && (party.add(expCatch) || party.boxAdd(expCatch))) return;   // never lose a catch
   expSay(T(S_STORED_FMT), dexName(expCatch.dex));
 }
 
@@ -6017,7 +6042,7 @@ void exploreTap(int16_t x, int16_t y) {
     return;
   }
   if (expPlace < 0) {             // the map
-    if (y < EXP_TOP_H && x > CX - 100 && x < CX + 100) { exploreOpen = false; sfxPlay(SFX_TAP); return; }
+    if (y < EXP_TOP_H && x > CX - 100 && x < CX + 100) { closeExplore(); sfxPlay(SFX_TAP); return; }
     int best = -1, bd = EXP_PIN_R * EXP_PIN_R + 1;
     for (uint8_t p = 0; p < PLACE_COUNT; p++) {
       int dx = x - MAP_PINS[p].x * 2, dy = y - (MAP_PINS[p].y * 2 + 8);   // pin + its label
@@ -7057,6 +7082,7 @@ void renderGallery() {
       const uint8_t *t = thumbs.get(dex);
       if (t) {
         drawThumb(t, x, y, 2, !pet.isRegistered(dex));
+        if (dexBoxHas(dex)) drawBallIcon(x + 10, y + 10, 7);   // one waits in the Pokedex box
         if (pet.isShinyRegistered(dex)) {
           gfx->setTextColor(UI_BAR_WARN);
           gfx->setTextSize(2);

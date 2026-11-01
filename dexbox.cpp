@@ -14,7 +14,10 @@ static bool mountFs() {
   static int8_t st = -1;
   // formatOnFail: the very first mount on a board formats the partition, which
   // takes a few seconds once. Only reached when the box is first used.
-  if (st < 0) st = FFat.begin(true) ? 1 : 0;
+  if (st < 0) {
+    st = FFat.begin(true) ? 1 : 0;
+    Serial.printf("dexbox: FFat %s\n", st ? "mounted" : "MOUNT FAILED");
+  }
   return st == 1;
 }
 #else

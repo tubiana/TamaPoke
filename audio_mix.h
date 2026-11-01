@@ -65,7 +65,14 @@ struct MusicCursor { uint16_t i1 = 0, i2 = 0; uint32_t at1 = 0, at2 = 0, clock =
 // Starts whichever channel is due and returns how many ms to render before the
 // next call (at most 60, to stay responsive to an effect), or 0 once a one-shot
 // track has finished.
+// A one-shot (the victory fanfare) plays its intro and stops. In the game the
+// theme loops under the dialogue, and gen_music.py reads the whole channel
+// text, so the data runs 90 s -- which played on long after a fight, on
+// whatever screen came next. The intro is the first ~6.9 s.
+#define FANFARE_MS 7000
+
 static inline uint32_t musicStep(GbSynth &syn, const MusicTrack &t, bool loop, MusicCursor &c) {
+  if (!loop && c.clock >= FANFARE_MS) return 0;
   if (c.clock >= c.at1) {
     if (c.i1 >= t.n1) {
       if (!loop) return 0;

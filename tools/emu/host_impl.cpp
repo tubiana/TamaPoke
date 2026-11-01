@@ -159,7 +159,8 @@ void linkNowPoll() {}
 static LinkNowStats gNoStats;
 const LinkNowStats &linkNowStats() { return gNoStats; }
 // audio is silent here, but the sketch calls these, so they have to exist
-static uint8_t g_emuVol = 3, g_emuMusic = 0;   // the board's new-device default
+static uint8_t g_emuVol = 3;   // the board's new-device default
+uint8_t g_emuMusic = 0;        // what a test reads back: the music asked for
 void audioMusic(uint8_t id) { g_emuMusic = id; }
 void audioSetVolume(uint8_t v) { g_emuVol = v > 10 ? 10 : v; }
 uint8_t audioVolume() { return g_emuVol; }

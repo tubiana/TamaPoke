@@ -72,6 +72,15 @@ int main(){
   ck(rms(hit) <= uiRms * 0.6, "the impact noise sits under a UI cue");
   ck(musicLevel(15) >= 1 && musicLevel(11) < 11, "the music is scaled, and a loud note never rounds to silence");
 
+  // The victory fanfare is a one-shot. The data carries the game's whole loop
+  // (90 s), which played on after the fight on whatever screen came next.
+  {
+    GbSynth f; MusicCursor fc; uint32_t t = 0;
+    while (t < 120000) { uint32_t st = musicStep(f, MUSIC_TBL[3], false, fc); if (!st) break; fc.clock += st; t += st; }
+    printf("    the fanfare ends after %u ms\n", t);
+    ck(t >= 5000 && t <= FANFARE_MS + 100, "the victory fanfare plays its intro and ends by itself");
+  }
+
   // The synth against a cry, at the same volume. Reported from the board: the
   // blips and the music drowned the cries at every volume. A cry is a real
   // waveform that only touches its peak for an instant, so it has to PEAK well

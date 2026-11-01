@@ -3,7 +3,7 @@
 [![Flash in browser](https://img.shields.io/badge/flash-in%20browser-FF6B00?logo=googlechrome&logoColor=white)](https://tubiana.github.io/TamaPoke/web/)
 [![MakerWorld](https://img.shields.io/badge/MakerWorld-3D%20case-00AE42?logo=bambulab&logoColor=white)](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)
 ![Board](https://img.shields.io/badge/board-ESP32--S3%20round%20AMOLED-E7352C?logo=espressif&logoColor=white)
-![Firmware](https://img.shields.io/badge/firmware-v3.20-8A2BE2)
+![Firmware](https://img.shields.io/badge/firmware-v3.21-8A2BE2)
 ![Code](https://img.shields.io/badge/code-MIT-blue)
 ![Languages](https://img.shields.io/badge/languages-6-FFCB05)
 [![Stars](https://img.shields.io/github/stars/tubiana/TamaPoke?style=flat&logo=github&color=yellow)](https://github.com/tubiana/TamaPoke/stargazers)
@@ -771,6 +771,10 @@ clipping at 10). A square wave is harsh and a cry only touches its peak for an
 instant, so at equal peaks the beeps drowned the cries at every volume: a cry
 now peaks at least twice as high as a beep, and a beep at least a quarter of a
 cry. `loud_test` holds both bounds.
+
+The **victory fanfare** plays its intro (**7 s**) and stops: the game's theme
+loops under the dialogue, and played whole it went on for 90 s after a fight.
+Leaving exploring stops any music still playing.
 
 ## Backgrounds: biome + real time
 

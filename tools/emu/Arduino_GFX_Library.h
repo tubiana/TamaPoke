@@ -47,7 +47,8 @@ public:
     fb[(size_t)y * _w + x] = c;
   }
 
-  void fillScreen(uint16_t c) { std::fill(fb.begin(), fb.end(), c); }
+  void fillScreen(uint16_t c) { std::fill(fb.begin(), fb.end(), c); fillScreens++; }
+  int fillScreens = 0;   // a test reads it: some screens must never clear first
 
   void fillRect(int x, int y, int w, int h, uint16_t c) {
     if (w < 0) { x += w; w = -w; }
