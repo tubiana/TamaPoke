@@ -1180,10 +1180,18 @@ void Pet::rollIVs() {
   }
 }
 
-uint16_t Pet::registeredCount() const {
+uint16_t Pet::registeredCount() const { return registeredCountIn(1, DEX_COUNT); }
+
+uint16_t Pet::registeredCountIn(uint16_t lo, uint16_t hi) const {
   uint16_t n = 0;
-  for (int i = 1; i <= DEX_COUNT; i++)
-    if (isRegistered(i)) n++;
+  for (uint16_t d = lo; d <= hi && d <= DEX_COUNT; d++)
+    if (isRegistered(d) && speciesHasArt(d)) n++;
+  return n;
+}
+
+uint16_t dexObtainableIn(uint16_t lo, uint16_t hi) {
+  uint16_t n = 0;
+  for (uint16_t d = lo < 1 ? 1 : lo; d <= hi && d <= DEX_COUNT; d++) n += speciesHasArt(d);
   return n;
 }
 

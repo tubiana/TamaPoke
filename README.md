@@ -3,7 +3,7 @@
 [![Flash in browser](https://img.shields.io/badge/flash-in%20browser-FF6B00?logo=googlechrome&logoColor=white)](https://tubiana.github.io/TamaPoke/web/)
 [![MakerWorld](https://img.shields.io/badge/MakerWorld-3D%20case-00AE42?logo=bambulab&logoColor=white)](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)
 ![Board](https://img.shields.io/badge/board-ESP32--S3%20round%20AMOLED-E7352C?logo=espressif&logoColor=white)
-![Firmware](https://img.shields.io/badge/firmware-v3.26-8A2BE2)
+![Firmware](https://img.shields.io/badge/firmware-v3.27-8A2BE2)
 ![Code](https://img.shields.io/badge/code-MIT-blue)
 ![Languages](https://img.shields.io/badge/languages-6-FFCB05)
 [![Stars](https://img.shields.io/github/stars/tubiana/TamaPoke?style=flat&logo=github&color=yellow)](https://github.com/tubiana/TamaPoke/stargazers)
@@ -354,7 +354,7 @@ After any ending, a **new egg** appears.
   neglect. Both streak & bond improve egg/shiny odds — **and the IVs of your next pet**.
 - **8 medals** (Lv10/25/50, favorite berry found, 7-day streak, max bond, final form,
   "fit" = weight 0 & no slip-ups), per-pet + a global counter.
-- **Pokédex:** raising a species registers it; **809 + shinies** to complete.
+- **Pokédex:** raising a species registers it; **790 + shinies** to complete. The dex runs to 809, but 19 species have no sprite anywhere (`noart.h`): they can never hatch, be met or be evolved into, so every counter leaves them out and draws them as a framed number.
   Browsed **one region at a time** — swipe vertically between regions,
   horizontally to page within it, so nothing is more than ten pages from the front.
 - **Region:** the pill under a waiting egg picks which generation it comes from —

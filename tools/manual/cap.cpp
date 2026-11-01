@@ -105,7 +105,7 @@ int main(int argc, char **argv){
   else if (!strcmp(sc,"wild")) { wild(); }
   else if (!strcmp(sc,"caught")) { caught(); }
   else if (!strcmp(sc,"keep")) { scene(2); makeMon(10, 14, false, expCatch); PartyMon o; makeMon(10, 9, false, o); dexBoxPut(o); expKeepAsk = true; }
-  else if (!strcmp(sc,"dexbox")) { PartyMon o; makeMon(10, 12, false, o); dexBoxPut(o); pet.registerCaught(10, false); for (int i = 0; i < PARTY_SLOTS; i++) party.releaseAt(i); galleryOpen = true; galleryPick = false; galleryDetail = 10; settle(2); }
+  else if (!strcmp(sc,"dexbox")) { PartyMon o; makeMon(10, 12, false, o); dexBoxPut(o); pet.registerCaught(10, false); for (int i = 0; i < PARTY_SLOTS; i++) party.releaseAt(i); pet.newEgg(); galleryOpen = true; galleryPick = false; galleryDetail = 10; settle(2); }
   else if (!strcmp(sc,"sheetxp")) { PartyMon m; makeMon(25, 9, false, m); party.replaceAt(0, m); party.xp[0] = 51; partyOpen = true; partyDetail = 1; }
   else if (!strcmp(sc,"birthday")) { pet.setBirthday(10, 31); pet.setClock(20757u*86400u + 15*3600u); settle(3); }
   render(); render();

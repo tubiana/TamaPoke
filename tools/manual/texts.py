@@ -25,7 +25,7 @@ EN = dict(
   egg_intro='New Pokémon come out of eggs. You never know who is inside!',
   egg_1='**Tap the egg 3 times** to help it hatch. It wiggles... and out comes a new friend!',
   egg_2='This button chooses **which region** the egg comes from. Tap it to change.',
-  egg_tip='Some eggs are rare, and a very, very few hide a **shiny** Pokémon with special colours. When one of your Pokémon grows up and leaves, a new egg arrives.',
+  egg_tip='The egg **waits for you**: it only hatches when you tap it, so take your time. Some eggs are rare, and a very, very few hide a **shiny** Pokémon with special colours. When one of your Pokémon grows up and leaves, a new egg arrives.',
 
   p_main='The main screen',
   main_intro='This is home. Your Pokémon lives here.',
@@ -90,6 +90,7 @@ EN = dict(
   e2='The **balls** show how many times you can explore. You have **3**.',
   e3='**Choose a place** on the map: meadow, forest, beach, ocean, mountain, snow, cave or volcano. Each one has its own Pokémon!',
   e4='**Watch closely!** One hiding place **moves**. Tap it quickly... a wild Pokémon jumps out!',
+  e5='To go back, tap the **arrow** next to the title.',
   ocean_cap='the ocean', volcano_cap='the volcano',
   explore_tip='The balls come back by themselves: all 3 in **10 hours**, or in **2 hours while your Pokémon sleeps**. Sometimes a wild Pokémon gets scared and **runs away**, but now you have seen it! Pokémon you have never seen are easier to find.',
 
@@ -99,13 +100,14 @@ EN = dict(
   c2='**Gotcha!** It is yours. It goes into the **Pokédex**.',
   c3='Already have this Pokémon? Choose which one to **keep**: the **old** one or the **new** one.',
   c4='In the Pokédex, tap a Pokémon you caught: **TO TEAM** brings it into your team. **STORE HERE** puts it back.',
+  c5='While an **egg is waiting**, you can **ADOPT** a Pokémon you caught instead: tap it twice. It starts a new life at **level 1** and grows up with you. The egg goes away!',
   catch_tip='If the ball does not work, the wild Pokémon attacks: try again! But if you knock it out, it is gone. Rare Pokémon are harder to catch.',
 
   p_dex='The Pokédex',
   dex_intro='The Pokédex is the book of all the Pokémon you have met. Can you fill it?',
   d1='Tap your Pokémon\'s name to open the **MENU**, then tap **POKEDEX**.',
   d2='**Choose a region.**',
-  d3='Pokémon you have met are in colour. The black shadows are the ones still to find! **Tap one** to see it.',
+  d3='Pokémon you have met are in colour. The black shadows are the ones still to find! **Tap one** to see it. A **number in a frame** has no picture yet: it cannot be found, and it does not count.',
   d4='You see it big, and you **hear its cry**! Tap again to go back.',
 
   p_quiz='The quiz: who\'s that Pokémon?',
@@ -142,7 +144,7 @@ EN = dict(
         ('My Pokémon is gone!', 'If it said goodbye, it is in your party (swipe right). A new egg is waiting for you.'),
         ('The time or the date is wrong.', 'Settings: set the time on page 1 and the date on page 2, then OK.'),
         ('I can\'t explore any more.', 'The balls on the map are empty. Wait a bit: they come back by themselves, even faster while your Pokémon sleeps.')],
-  grown='Pokémon caught while exploring are kept in a Pokédex box on the device itself, not on the SD card; the save backup (EXPORT) does not include them yet. The firmware, the installer and the full rules are on the project page. The Pokémon pictures and cries are optional packs copied to the microSD card by the web installer; without the cries, the TamaPoke plays its own little beeps instead. A new device starts at volume 3.',
+  grown='Pokémon caught while exploring are kept in a Pokédex box on the device itself, not on the SD card; the save backup (EXPORT on the serial console) includes them. The firmware, the installer and the full rules are on the project page. The Pokémon pictures and cries are optional packs copied to the microSD card by the web installer; without the cries, the TamaPoke plays its own little beeps instead. A new device starts at volume 3.',
 )
 
 FR = dict(
@@ -172,7 +174,7 @@ FR = dict(
   egg_intro='Les nouveaux Pokémon sortent des œufs. On ne sait jamais qui est dedans !',
   egg_1='**Touche l\'œuf 3 fois** pour l\'aider à éclore. Il bouge... et un nouvel ami arrive !',
   egg_2='Ce bouton choisit **la région** d\'où vient l\'œuf. Touche-le pour changer.',
-  egg_tip='Certains œufs sont rares, et quelques-uns cachent un Pokémon **chromatique** aux couleurs spéciales. Quand un de tes Pokémon est grand et part, un nouvel œuf arrive.',
+  egg_tip='L\'œuf **t\'attend** : il n\'éclot que quand tu le touches, prends ton temps. Certains œufs sont rares, et quelques-uns cachent un Pokémon **chromatique** aux couleurs spéciales. Quand un de tes Pokémon est grand et part, un nouvel œuf arrive.',
 
   p_main='L\'écran principal',
   main_intro='C\'est la maison. Ton Pokémon vit ici.',
@@ -237,6 +239,7 @@ FR = dict(
   e2='Les **balls** montrent combien de fois tu peux explorer. Tu en as **3**.',
   e3='**Choisis un endroit** sur la carte : prairie, forêt, plage, océan, montagne, neige, grotte ou volcan. Chacun a ses Pokémon !',
   e4='**Regarde bien !** Une cachette **bouge**. Touche-la vite... un Pokémon sauvage apparaît !',
+  e5='Pour revenir, touche la **flèche** à côté du titre.',
   ocean_cap='l\'océan', volcano_cap='le volcan',
   explore_tip='Les balls reviennent toutes seules : les 3 en **10 heures**, ou en **2 heures pendant que ton Pokémon dort**. Parfois, le Pokémon sauvage a peur et **s\'enfuit**, mais maintenant tu l\'as vu ! Les Pokémon que tu n\'as jamais vus sont plus faciles à trouver.',
 
@@ -246,13 +249,14 @@ FR = dict(
   c2='**Attrapé !** Il est à toi. Il va dans le **Pokédex**.',
   c3='Tu as déjà ce Pokémon ? Choisis lequel **garder** : l\'**ancien** ou le **nouveau**.',
   c4='Dans le Pokédex, touche un Pokémon que tu as attrapé : **DANS L EQUIPE** le fait venir dans ton équipe. **RANGER ICI** le range de nouveau.',
+  c5='Quand un **œuf attend**, tu peux plutôt **ADOPTER** un Pokémon que tu as attrapé : touche deux fois. Il commence une nouvelle vie au **niveau 1** et grandit avec toi. L\'œuf s\'en va !',
   catch_tip='Si la ball ne marche pas, le Pokémon sauvage attaque : réessaie ! Mais si tu le mets K.O., il s\'en va. Les Pokémon rares sont plus durs à attraper.',
 
   p_dex='Le Pokédex',
   dex_intro='Le Pokédex, c\'est le livre de tous les Pokémon que tu as rencontrés. Arriveras-tu à le remplir ?',
   d1='Touche le nom de ton Pokémon pour ouvrir le **MENU**, puis touche **POKEDEX**.',
   d2='**Choisis une région.**',
-  d3='Les Pokémon que tu connais sont en couleur. Les ombres noires sont ceux qu\'il reste à trouver ! **Touches-en un** pour le voir.',
+  d3='Les Pokémon que tu connais sont en couleur. Les ombres noires sont ceux qu\'il reste à trouver ! **Touches-en un** pour le voir. Un **numéro dans un cadre** n\'a pas encore d\'image : on ne peut pas le trouver, et il ne compte pas.',
   d4='Tu le vois en grand, et tu **entends son cri** ! Touche encore pour revenir.',
 
   p_quiz='Le quiz : quel est ce Pokémon ?',
@@ -289,5 +293,5 @@ FR = dict(
         ('Mon Pokémon est parti !', 'S\'il t\'a dit au revoir, il est dans ton équipe (glisse vers la droite). Un nouvel œuf t\'attend.'),
         ('L\'heure ou la date est fausse.', 'Réglages : l\'heure sur la page 1, la date sur la page 2, puis OK.'),
         ('Je ne peux plus explorer.', 'Les balls de la carte sont vides. Attends un peu : elles reviennent toutes seules, encore plus vite quand ton Pokémon dort.')],
-  grown='Les Pokémon attrapés en explorant sont gardés dans une boîte du Pokédex sur l\'appareil lui-même, pas sur la carte SD ; la sauvegarde (EXPORT) ne les inclut pas encore. Le firmware, l\'installateur et toutes les règles sont sur la page du projet. Les images et les cris des Pokémon sont des packs optionnels copiés sur la carte microSD par l\'installateur web ; sans les cris, le TamaPoke joue ses petits bips à la place. Un appareil neuf démarre au volume 3.',
+  grown='Les Pokémon attrapés en explorant sont gardés dans une boîte du Pokédex sur l\'appareil lui-même, pas sur la carte SD ; la sauvegarde (EXPORT dans la console série) les inclut. Le firmware, l\'installateur et toutes les règles sont sur la page du projet. Les images et les cris des Pokémon sont des packs optionnels copiés sur la carte microSD par l\'installateur web ; sans les cris, le TamaPoke joue ses petits bips à la place. Un appareil neuf démarre au volume 3.',
 )
