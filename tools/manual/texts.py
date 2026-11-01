@@ -74,6 +74,7 @@ EN = dict(
   party_1='**Tap a Pokémon** to see it, hear its cry and look at its moves.',
   party_2='The **BOX** is where extra Pokémon wait.',
   party_tip='Your party Pokémon can **battle with you**! The more Pokémon you raise, the stronger your team.',
+  xp_l='They grow by fighting!', xp='Every Pokémon in your party gets **XP** when you win a battle or catch a Pokémon, even the ones that did not fight. Enough XP and they **gain a level**, and sometimes **evolve**! They can never grow higher than the best level you reached by raising one.',
 
   p_battle='Battles',
   battle_intro='Swipe left from the main screen to go to the gyms. Beat all the leaders to win their **badges**!',
@@ -82,6 +83,23 @@ EN = dict(
   b3='Choose your team, then in the battle tap **FIGHT** to attack, **POKEMON** to change Pokémon, or **RUN** to leave.',
   b4='**Pick a move.** Water beats fire, fire beats grass, grass beats water... Try and see which moves are "super effective"!',
   b5='**You win!** You get a new **badge** and your Pokémon gets stronger.',
+
+  p_explore='Exploring',
+  explore_intro='Wild Pokémon hide all over the island. Go and find them!',
+  e1='Tap your Pokémon\'s name to open the **MENU**, then tap **EXPLORE**.',
+  e2='The **balls** show how many times you can explore. You have **3**.',
+  e3='**Choose a place** on the map: meadow, forest, beach, ocean, mountain, snow, cave or volcano. Each one has its own Pokémon!',
+  e4='**Watch closely!** One hiding place **moves**. Tap it quickly... a wild Pokémon jumps out!',
+  ocean_cap='the ocean', volcano_cap='the volcano',
+  explore_tip='The balls come back by themselves: all 3 in **10 hours**, or in **2 hours while your Pokémon sleeps**. Sometimes a wild Pokémon gets scared and **runs away**, but now you have seen it! Pokémon you have never seen are easier to find.',
+
+  p_catch='Catch them!',
+  catch_intro='A wild Pokémon appeared! Battle it and try to catch it.',
+  c1='Tap **BALL** to throw a ball. Tap **FIGHT** first to make it weaker: a weak Pokémon is much easier to catch!',
+  c2='**Gotcha!** It is yours. It goes into the **Pokédex**.',
+  c3='Already have this Pokémon? Choose which one to **keep**: the **old** one or the **new** one.',
+  c4='In the Pokédex, tap a Pokémon you caught: **TO TEAM** brings it into your team. **STORE HERE** puts it back.',
+  catch_tip='If the ball does not work, the wild Pokémon attacks: try again! But if you knock it out, it is gone. Rare Pokémon are harder to catch.',
 
   p_dex='The Pokédex',
   dex_intro='The Pokédex is the book of all the Pokémon you have met. Can you fill it?',
@@ -122,8 +140,9 @@ EN = dict(
         ('There is no sound.', 'Settings: check that the sound is ON and the volume is not 0.'),
         ('My Pokémon is only a number, there is no picture.', 'The pictures live on the memory card (SD). A grown-up can put them back with the installer.'),
         ('My Pokémon is gone!', 'If it said goodbye, it is in your party (swipe right). A new egg is waiting for you.'),
-        ('The time or the date is wrong.', 'Settings: set the time on page 1 and the date on page 2, then OK.')],
-  grown='The firmware, the installer and the full rules are on the project page. The Pokémon pictures and cries are optional packs copied to the microSD card by the web installer; without the cries, the TamaPoke plays its own little beeps instead. A new device starts at volume 3.',
+        ('The time or the date is wrong.', 'Settings: set the time on page 1 and the date on page 2, then OK.'),
+        ('I can\'t explore any more.', 'The balls on the map are empty. Wait a bit: they come back by themselves, even faster while your Pokémon sleeps.')],
+  grown='Pokémon caught while exploring are kept in a Pokédex box on the device itself, not on the SD card; the save backup (EXPORT) does not include them yet. The firmware, the installer and the full rules are on the project page. The Pokémon pictures and cries are optional packs copied to the microSD card by the web installer; without the cries, the TamaPoke plays its own little beeps instead. A new device starts at volume 3.',
 )
 
 FR = dict(
@@ -202,6 +221,7 @@ FR = dict(
   party_1='**Touche un Pokémon** pour le voir, entendre son cri et regarder ses attaques.',
   party_2='La **BOÎTE**, c\'est là où attendent les Pokémon en plus.',
   party_tip='Les Pokémon de ton équipe peuvent **combattre avec toi** ! Plus tu élèves de Pokémon, plus ton équipe est forte.',
+  xp_l='Ils grandissent en combattant !', xp='Tous les Pokémon de ton équipe gagnent de l\'**XP** quand tu gagnes un combat ou que tu attrapes un Pokémon, même ceux qui n\'ont pas combattu. Avec assez d\'XP, ils **gagnent un niveau**, et parfois ils **évoluent** ! Ils ne peuvent pas dépasser le meilleur niveau que tu as atteint en élevant un Pokémon.',
 
   p_battle='Les combats',
   battle_intro='Glisse vers la gauche depuis l\'écran principal pour aller aux arènes. Bats tous les champions pour gagner leurs **badges** !',
@@ -210,6 +230,23 @@ FR = dict(
   b3='Choisis ton équipe, puis pendant le combat touche **COMBATTRE** pour attaquer, **POKEMON** pour changer de Pokémon, ou **FUIR** pour partir.',
   b4='**Choisis une attaque.** L\'eau bat le feu, le feu bat la plante, la plante bat l\'eau... Essaie et regarde quelles attaques sont « super efficaces » !',
   b5='**Tu as gagné !** Tu reçois un nouveau **badge** et ton Pokémon devient plus fort.',
+
+  p_explore='Explorer',
+  explore_intro='Des Pokémon sauvages se cachent partout sur l\'île. Pars à leur recherche !',
+  e1='Touche le nom de ton Pokémon pour ouvrir le **MENU**, puis touche **EXPLORER**.',
+  e2='Les **balls** montrent combien de fois tu peux explorer. Tu en as **3**.',
+  e3='**Choisis un endroit** sur la carte : prairie, forêt, plage, océan, montagne, neige, grotte ou volcan. Chacun a ses Pokémon !',
+  e4='**Regarde bien !** Une cachette **bouge**. Touche-la vite... un Pokémon sauvage apparaît !',
+  ocean_cap='l\'océan', volcano_cap='le volcan',
+  explore_tip='Les balls reviennent toutes seules : les 3 en **10 heures**, ou en **2 heures pendant que ton Pokémon dort**. Parfois, le Pokémon sauvage a peur et **s\'enfuit**, mais maintenant tu l\'as vu ! Les Pokémon que tu n\'as jamais vus sont plus faciles à trouver.',
+
+  p_catch='Attrape-les !',
+  catch_intro='Un Pokémon sauvage apparaît ! Combats-le et essaie de l\'attraper.',
+  c1='Touche **BALL** pour lancer une ball. Touche d\'abord **COMBATTRE** pour l\'affaiblir : un Pokémon fatigué est bien plus facile à attraper !',
+  c2='**Attrapé !** Il est à toi. Il va dans le **Pokédex**.',
+  c3='Tu as déjà ce Pokémon ? Choisis lequel **garder** : l\'**ancien** ou le **nouveau**.',
+  c4='Dans le Pokédex, touche un Pokémon que tu as attrapé : **DANS L EQUIPE** le fait venir dans ton équipe. **RANGER ICI** le range de nouveau.',
+  catch_tip='Si la ball ne marche pas, le Pokémon sauvage attaque : réessaie ! Mais si tu le mets K.O., il s\'en va. Les Pokémon rares sont plus durs à attraper.',
 
   p_dex='Le Pokédex',
   dex_intro='Le Pokédex, c\'est le livre de tous les Pokémon que tu as rencontrés. Arriveras-tu à le remplir ?',
@@ -250,6 +287,7 @@ FR = dict(
         ('Il n\'y a pas de son.', 'Réglages : vérifie que le son est sur ON et que le volume n\'est pas à 0.'),
         ('Mon Pokémon est juste un numéro, il n\'y a pas d\'image.', 'Les images sont sur la carte mémoire (SD). Un grand peut les remettre avec l\'installateur.'),
         ('Mon Pokémon est parti !', 'S\'il t\'a dit au revoir, il est dans ton équipe (glisse vers la droite). Un nouvel œuf t\'attend.'),
-        ('L\'heure ou la date est fausse.', 'Réglages : l\'heure sur la page 1, la date sur la page 2, puis OK.')],
-  grown='Le firmware, l\'installateur et toutes les règles sont sur la page du projet. Les images et les cris des Pokémon sont des packs optionnels copiés sur la carte microSD par l\'installateur web ; sans les cris, le TamaPoke joue ses petits bips à la place. Un appareil neuf démarre au volume 3.',
+        ('L\'heure ou la date est fausse.', 'Réglages : l\'heure sur la page 1, la date sur la page 2, puis OK.'),
+        ('Je ne peux plus explorer.', 'Les balls de la carte sont vides. Attends un peu : elles reviennent toutes seules, encore plus vite quand ton Pokémon dort.')],
+  grown='Les Pokémon attrapés en explorant sont gardés dans une boîte du Pokédex sur l\'appareil lui-même, pas sur la carte SD ; la sauvegarde (EXPORT) ne les inclut pas encore. Le firmware, l\'installateur et toutes les règles sont sur la page du projet. Les images et les cris des Pokémon sont des packs optionnels copiés sur la carte microSD par l\'installateur web ; sans les cris, le TamaPoke joue ses petits bips à la place. Un appareil neuf démarre au volume 3.',
 )

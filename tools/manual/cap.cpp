@@ -5,6 +5,8 @@
 #include "pet.h"
 #include "party.h"
 #include "i18n.h"
+#include "battle.h"
+#include "dexbox.h"
 
 #include <cstdio>
 #include <cstring>
@@ -28,6 +30,19 @@ extern uint8_t quizGainShown;
 extern uint32_t feedMenuUntil;
 extern bool btlNewBadge; extern uint32_t btlWinUntil;
 extern uint8_t btlTrainGain, btlTrainWhich;
+void openExplore();
+bool startWildBattle(int16_t dex, uint8_t lvl, uint8_t place);
+void battleTap(int16_t x, int16_t y);
+extern bool exploreOpen, expKeepAsk, battleOpen, btlCaught;
+extern int8_t expPlace; extern uint8_t expActive, btlMsgCount, partyDetail;
+extern uint32_t expActiveUntil, expNextAt, btlBallUntil;
+extern Combatant btlFoe;
+extern PartyMon expCatch;
+// a place's scene with spot 2 frozen mid-stir, so the picture shows what to tap
+static void scene(int8_t pl){ openExplore(); expPlace = pl; expNextAt = millis() + 600000; expActive = 2; expActiveUntil = millis() + 600000; }
+// a wild CATERPIE in the forest, its opening line already read
+static void wild(){ scene(2); startWildBattle(10, 12, 2); while (btlMsgCount) battleTap(233, 233); }
+static void caught(){ wild(); for (int k = 0; k < 40 && !btlCaught; k++) { if (btlMsgCount) { battleTap(233,233); continue; } btlFoe.hp = 1; btlMenu = 0; battleTap(317, 296); } btlBallUntil = 0; }
 
 static void dump(const char*n){ FILE*f=fopen(n,"wb"); fprintf(f,"P6 466 466 255\n");
   const uint16_t*b=gfx->buffer(); for(int i=0;i<466*466;i++){uint16_t p=b[i];
@@ -83,6 +98,15 @@ int main(int argc, char **argv){
   else if (!strcmp(sc,"clock")) { openClock(); }
   else if (!strcmp(sc,"date")) { openClock(); settingsPage = 1; }
   else if (!strcmp(sc,"options")) { openClock(); settingsPage = 2; }
+  else if (!strcmp(sc,"explmap")) { openExplore(); pet.expSpend(); }
+  else if (!strcmp(sc,"explscene")) { scene(2); pet.expSpend(); }
+  else if (!strcmp(sc,"explocean")) { scene(6); }
+  else if (!strcmp(sc,"explvolcano")) { scene(3); }
+  else if (!strcmp(sc,"wild")) { wild(); }
+  else if (!strcmp(sc,"caught")) { caught(); }
+  else if (!strcmp(sc,"keep")) { scene(2); makeMon(10, 14, false, expCatch); PartyMon o; makeMon(10, 9, false, o); dexBoxPut(o); expKeepAsk = true; }
+  else if (!strcmp(sc,"dexbox")) { PartyMon o; makeMon(10, 12, false, o); dexBoxPut(o); pet.registerCaught(10, false); for (int i = 0; i < PARTY_SLOTS; i++) party.releaseAt(i); galleryOpen = true; galleryPick = false; galleryDetail = 10; settle(2); }
+  else if (!strcmp(sc,"sheetxp")) { PartyMon m; makeMon(25, 9, false, m); party.replaceAt(0, m); party.xp[0] = 51; partyOpen = true; partyDetail = 1; }
   else if (!strcmp(sc,"birthday")) { pet.setBirthday(10, 31); pet.setClock(20757u*86400u + 15*3600u); settle(3); }
   render(); render();
   dump(out);

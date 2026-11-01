@@ -327,7 +327,10 @@ def build(lang, T):
     d.img(shot('party', L, marks=((1, 160, 126, 48), (2, 233, 340, 0, 120, 340))), M, y, s)
     d.legend([(1, T['party_1']), (2, T['party_2'])], M + s + 16, y - 20, CW - s - 16, 13)
     y -= s + 14
-    d.box(T['tip'], T['party_tip'], M, y, CW, YEL)
+    y = d.box(T['tip'], T['party_tip'], M, y, CW, YEL)
+    s = 190
+    d.img(shot('sheetxp', L, marks=((3, 233, 288, 0, 120, 288),)), M, y, s)
+    d.box(T['xp_l'], T['xp'], M + s + 14, y - 10, CW - s - 14, GREEN, 12.5)
 
     # 11 -- battles
     d.new(T['p_battle'], RED, T['battle_intro'])
@@ -344,16 +347,44 @@ def build(lang, T):
     y -= s + 6
     y = d.legend([(4, T['b4']), (5, T['b5'])], M, y, CW, 13)
 
-    # 12 -- pokedex
+    # 12 -- exploring
+    d.new(T['p_explore'], GREEN, T['explore_intro'])
+    y = d.y; s = 165
+    d.img(shot('menu', L, marks=((1, 233, 164, 0, 80, 164),)), xs[0], y, s)
+    d.img(shot('explmap', L, marks=((2, 233, 52, 0, 120, 52), (3, 128, 204, 34))), xs[1], y, s)
+    d.img(shot('explscene', L, marks=((4, 276, 200, 44),)), xs[2], y, s)
+    y -= s + 6
+    y = d.legend([(1, T['e1']), (2, T['e2']), (3, T['e3']), (4, T['e4'])], M, y, CW, 13)
+    s = 150
+    d.img(shot('explocean', L), M + 40, y, s); d.img(shot('explvolcano', L), W - M - 40 - s, y, s)
+    d.caption(T['ocean_cap'], M + 40, y - s, s); d.caption(T['volcano_cap'], W - M - 40 - s, y - s, s)
+    y -= s + 30
+    d.box(T['tip'], T['explore_tip'], M, y, CW, YEL)
+
+    # 13 -- catching
+    d.new(T['p_catch'], RED, T['catch_intro'])
+    y = d.y; s = 165
+    d.img(shot('wild', L, marks=((1, 317, 296, 46),)), xs[0], y, s)
+    d.img(shot('caught', L, marks=((2, 324, 100, 40),)), xs[1], y, s)
+    d.img(shot('keep', L, marks=((3, 233, 216, 0, 60, 216),)), xs[2], y, s)
+    y -= s + 6
+    y = d.legend([(1, T['c1']), (2, T['c2']), (3, T['c3'])], M, y, CW, 13)
+    s = 190
+    d.img(shot('dexbox', L, marks=((4, 233, 367, 0, 80, 367),)), M, y, s)
+    d.legend([(4, T['c4'])], M + s + 16, y - 20, CW - s - 16, 13)
+    y -= s + 10
+    d.box(T['tip'], T['catch_tip'], M, y, CW, YEL)
+
+    # 14 -- pokedex
     d.new(T['p_dex'], BLUE, T['dex_intro'])
     y = d.y; s = 165
-    d.img(shot('menu', L, marks=((1, 233, 174, 0, 80, 174),)), xs[0], y, s)
+    d.img(shot('menu', L, marks=((1, 233, 214, 0, 80, 214),)), xs[0], y, s)
     d.img(shot('dexpick', L, marks=((2, 233, 130, 0, 46, 130),)), xs[1], y, s)
     d.img(shot('dex', L, marks=((3, 353, 124, 38),)), xs[2], y, s)
     y -= s + 6
     y = d.legend([(1, T['d1']), (2, T['d2']), (3, T['d3'])], M, y, CW, 13)
     s = 190
-    d.img(shot('dexdetail', L, marks=((4, 171, 150, 50),)), W / 2 - s / 2, y, s)
+    d.img(shot('dexdetail', L, marks=((4, 233, 262, 60),)), W / 2 - s / 2, y, s)
     y -= s + 4
     y = d.legend([(4, T['d4'])], M, y, CW, 13)
 
