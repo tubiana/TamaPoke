@@ -44,7 +44,7 @@
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
-#define FW_VERSION "3.33"
+#define FW_VERSION "3.34"
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   LCD_CS, LCD_SCLK, LCD_SDIO0, LCD_SDIO1, LCD_SDIO2, LCD_SDIO3);
@@ -343,6 +343,13 @@ bool btlOver = false;
 bool btlWon = false;
 bool btlNewBadge = false;
 uint32_t btlWinUntil = 0;   // the win screen is up
+// A creature of yours fainted and the player must choose who goes next: the
+// team screen is up with no way back. Never true for a LAN guest, whose side
+// the host replaces (the protocol carries a choice only as a turn).
+bool btlMustPick = false;
+// A LAN fight's ending: the win or lose scene, up until a tap. 0 = not shown.
+uint32_t btlLanEndT0 = 0;
+bool btlLinkLost = false;   // the fight ended because the peer went quiet
 // A trainer fight is a run of 1v1s: both sides queue their squad and the next
 // one steps up when the current one faints. This is the whole difficulty curve
 // -- no gating, just attrition, so one strong creature sweeps Brock and dies
@@ -4773,6 +4780,9 @@ void startLinkBattle() {
   btlWon = false;
   btlMenu = 0;
   btlWinUntil = 0;
+  btlMustPick = false;
+  btlLanEndT0 = 0;
+  btlLinkLost = false;
   btlSwapWho = -1;
   btlFaintUntil[0] = btlFaintUntil[1] = 0;
   btlEnterUntil[0] = btlEnterUntil[1] = 0;
@@ -4811,6 +4821,9 @@ void startTrainerBattle(uint8_t idx, bool hard) {
   btlWon = false;
   btlMenu = 0;
   btlWinUntil = 0;
+  btlMustPick = false;
+  btlLanEndT0 = 0;
+  btlLinkLost = false;
   btlSwapWho = -1;
   btlFaintUntil[0] = btlFaintUntil[1] = 0;
   btlEnterUntil[0] = btlEnterUntil[1] = 0;
@@ -4871,6 +4884,9 @@ static void btlBegin() {
   btlWon = false;
   btlMenu = 0;
   btlWinUntil = 0;
+  btlMustPick = false;
+  btlLanEndT0 = 0;
+  btlLinkLost = false;
   btlSwapWho = -1;
   btlFaintUntil[0] = btlFaintUntil[1] = 0;
   btlEnterUntil[0] = btlEnterUntil[1] = 0;
@@ -4943,6 +4959,7 @@ static void btlLinkPoll() {
   if (!lan.live() && !btlOver) {
     btlOver = true;
     btlWon = false;
+    btlLinkLost = true;
     audioMusic(MUS_NONE);
     btlMsgCount = 0;
     btlSay("%s", T(S_LAN_GONE));
@@ -5073,7 +5090,7 @@ static void btlAfterTurn() {
     btlSwapWho = 1;
     return;
   }
-  if (btlYou.fainted() && btlSquadAt + 1 < btlSquadN) {
+  if (btlYou.fainted() && btlBenchStanding()) {
     btlFaintUntil[0] = millis() + BTL_FAINT_MS;
     btlSwapWho = 0;
     return;
@@ -5307,10 +5324,143 @@ void renderWin() {
   gfx->flush();
 }
 
+// ---------- the team screen, in a fight ----------
+// POKEMON in a fight, and the choice after one of yours faints. It takes the
+// whole panel: the old version used the four cells of the move grid, so a
+// fifth and sixth creature could never be chosen at all.
+#define TEAM_CELL_W 150
+#define TEAM_CELL_H 74
+#define TEAM_X(i) (78 + ((i) % 2) * (TEAM_CELL_W + 10))
+#define TEAM_Y(i) (82 + ((i) / 2) * (TEAM_CELL_H + 8))
+
+// Which squad member a tap is on, or -1. Draw and tap share this.
+int btlTeamHit(int16_t x, int16_t y) {
+  for (uint8_t i = 0; i < btlSquadN; i++) {
+    int cx = TEAM_X(i), cy = TEAM_Y(i);
+    if (x >= cx && x <= cx + TEAM_CELL_W && y >= cy && y <= cy + TEAM_CELL_H) return i;
+  }
+  return -1;
+}
+
+static void renderBtlTeam() {
+  gfx->fillScreen(RGB565_BLACK);
+  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  const char *title = btlMustPick ? T(S_BTL_PICKNEXT) : T(S_BTL_SWITCH);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(2);
+  gfx->setCursor(CX - (int)strlen(title) * 6, 50);
+  gfx->print(title);
+  for (uint8_t i = 0; i < btlSquadN; i++) {
+    const Combatant &m = (i == btlSquadAt) ? btlYou : btlSquad[i];
+    int x = TEAM_X(i), y = TEAM_Y(i);
+    bool out = (i == btlSquadAt), ko = m.fainted();
+    gfx->fillRoundRect(x, y, TEAM_CELL_W, TEAM_CELL_H, 10,
+                       ko ? UI_TRACK : (out ? UI_WHITE : UI_BG_DAY));
+    gfx->drawRoundRect(x, y, TEAM_CELL_W, TEAM_CELL_H, 10, ko ? 0x8410 : UI_INK);
+    if (out && !ko) {            // the one in the fight now: a green frame
+      gfx->drawRoundRect(x + 1, y + 1, TEAM_CELL_W - 2, TEAM_CELL_H - 2, 9, UI_BAR_OK);
+      gfx->drawRoundRect(x + 2, y + 2, TEAM_CELL_W - 4, TEAM_CELL_H - 4, 8, UI_BAR_OK);
+    }
+    const uint8_t *th = thumbs.get(m.dex);
+    if (th) drawThumb(th, x - 12, y - 6, 2, ko);
+    gfx->setTextColor(ko ? 0x8410 : UI_INK);
+    gfx->setTextSize(1);
+    gfx->setCursor(x + 54, y + 12);
+    gfx->print(m.name);
+    char l[20];
+    snprintf(l, sizeof(l), "Lv.%u", (unsigned)m.level);
+    gfx->setCursor(x + 54, y + 26);
+    gfx->print(l);
+    btlHpBar(x + 54, y + 40, 86, m, m.hp);
+    snprintf(l, sizeof(l), "%u/%u", (unsigned)m.hp, (unsigned)m.maxHp);
+    gfx->setCursor(x + 54, y + 58);
+    gfx->print(l);
+  }
+  if (!btlMustPick) drawBtlBack();   // after a faint there is no going back
+  gfx->flush();
+}
+
+// ---------- the end of a LAN fight ----------
+// A scene rather than a line of text: a win between two friends is the most
+// shared moment the game has. Up until a tap, which goes back to the LAN
+// screen (and its rematch) -- but not for the first LANEND_MIN_MS, so the tap
+// that cleared the last words cannot also skip the scene.
+#define LANEND_MIN_MS 700
+
+static void renderLanEnd(uint32_t now) {
+  uint32_t t = now - btlLanEndT0;
+  bool won = btlWon;
+  gfx->fillScreen(RGB565_BLACK);
+  gfx->fillCircle(CX, CY, 231, won ? UI_BG_DAY : 0x39C9);   // dusk grey on a loss
+  const int sy = 210;                                      // the creature's spot
+  if (won) {
+    // a slowly turning sunburst behind the winner, kept inside the glass:
+    // from (CX, sy) the circle is at least 231 - (CY - sy) away
+    const int ray = 231 - (CY - sy) - 2;
+    for (int k = 0; k < 12; k++) {
+      float a0 = (k * 30 + t * 0.03f) * 0.0174533f;
+      float a1 = a0 + 0.20f;
+      gfx->fillTriangle(CX, sy, CX + (int)(cosf(a0) * ray), sy + (int)(sinf(a0) * ray),
+                        CX + (int)(cosf(a1) * ray), sy + (int)(sinf(a1) * ray),
+                        k % 2 ? 0xFF2C : 0xFEA0);
+    }
+  } else {
+    // rain, falling through the whole circle
+    for (int i = 0; i < 36; i++) {
+      int x = 30 + (i * 97) % 406;
+      int y = (int)((t * (420 + (i * 53) % 200) / 1000 + i * 41) % 520) - 30;
+      long dx = x - CX, dy = y + 6 - CY;
+      if (dx * dx + dy * dy > 218L * 218L) continue;      // off the glass
+      gfx->drawLine(x, y, x - 3, y + 12, 0x7E3D);
+    }
+  }
+  // the creature that finished the fight: hopping for joy, or sitting it out
+  const uint8_t *th = thumbs.get(btlYou.dex);
+  int hop = won ? (int)(fabsf(sinf(t * 0.009f)) * 28) : 0;
+  if (th) drawThumb(th, CX - GAL_CELL / 2, sy - GAL_CELL / 2 - hop, 3, false);
+  if (won) {
+    // confetti, each piece on its own lane and speed
+    static const uint16_t COL[6] = { UI_BAR_BAD, UI_BAR_OK, 0x4C98, 0xFEA0, 0xF454, 0xFFFF };
+    for (int i = 0; i < 40; i++) {
+      int x = 20 + (i * 73) % 426 + (int)(sinf(t * 0.004f + i) * 10);
+      int y = (int)((t * (90 + (i * 37) % 90) / 1000 + i * 59) % 500) - 20;
+      long dx = x - CX, dy = y - CY;
+      if (dx * dx + dy * dy > 222L * 222L) continue;      // off the glass
+      gfx->fillRect(x, y, (i % 3) ? 6 : 4, (i % 3) ? 4 : 7, COL[i % 6]);
+    }
+  }
+  const char *title = won ? T(S_BTL_WIN) : T(S_BTL_LOSE);
+  char l[48];
+  snprintf(l, sizeof(l), T(S_LAN_GG), lan.peerName[0] ? lan.peerName : "?");
+  if (won) {     // plates, so the words read over the rays
+    int tw = (int)strlen(title) * 18 + 28, lw = (int)strlen(l) * 12 + 24;
+    gfx->fillRoundRect(CX - tw / 2, 60, tw, 40, 12, UI_WHITE);
+    gfx->drawRoundRect(CX - tw / 2, 60, tw, 40, 12, UI_INK);
+    gfx->fillRoundRect(CX - lw / 2, 330, lw, 34, 10, UI_WHITE);
+    gfx->drawRoundRect(CX - lw / 2, 330, lw, 34, 10, UI_INK);
+  }
+  gfx->setTextSize(3);
+  gfx->setTextColor(won ? UI_INK : UI_WHITE);
+  gfx->setCursor(CX - (int)strlen(title) * 9, 70);
+  gfx->print(title);
+  gfx->setTextSize(2);
+  gfx->setCursor(CX - (int)strlen(l) * 6, 340);
+  gfx->print(l);
+  if (t >= LANEND_MIN_MS) {
+    gfx->setTextSize(1);
+    gfx->setTextColor(won ? UI_INK : 0xBDF7);
+    gfx->setCursor(CX - 21, 392);
+    gfx->print("tap...");
+  }
+  gfx->flush();
+}
+
 void renderBattle() {
   if (btlWinUntil) { renderWin(); return; }
+  if (btlLanEndT0) { renderLanEnd(millis()); return; }
   if (btlCatchEnd && millis() >= btlCatchEnd) btlCatchFinish();
   btlEaseBars();
+  if (btlMenu == 2 && !btlMsgCount) { renderBtlTeam(); return; }   // the whole panel
   gfx->fillRect(0, 0, 466, 30, RGB565_BLACK);   // not fillScreen: see renderExploreMap()
   drawBattleBack();
   // the lower band stays flat so the move grid and the HP text keep their
@@ -5386,24 +5536,6 @@ void renderBattle() {
       gfx->setCursor(x + (BTL_CELL_W - (int)strlen(low[i]) * 12) / 2, y + 14);
       gfx->print(low[i]);
     }
-  } else if (btlMenu == 2) {
-    drawBtlBack();
-    // who to bring on instead; the current one and anything fainted is inert
-    for (uint8_t i = 0; i < btlSquadN && i < 4; i++) {
-      int x = BTL_CELL_X(i), y = BTL_CELL_Y(i);
-      const Combatant &m = (i == btlSquadAt) ? btlYou : btlSquad[i];
-      bool usable = (i != btlSquadAt) && !m.fainted();
-      gfx->fillRoundRect(x, y, BTL_CELL_W, BTL_CELL_H, 10, usable ? UI_BG_DAY : UI_TRACK);
-      gfx->drawRoundRect(x, y, BTL_CELL_W, BTL_CELL_H, 10, usable ? UI_INK : 0x8410);
-      gfx->setTextColor(usable ? UI_INK : 0x8410);
-      gfx->setTextSize(1);
-      gfx->setCursor(x + 10, y + 10);
-      gfx->print(m.name);
-      char hp[20];
-      snprintf(hp, sizeof(hp), "%u/%u", m.hp, m.maxHp);
-      gfx->setCursor(x + 10, y + 28);
-      gfx->print(hp);
-    }
   } else {
     drawBtlBack();
     for (int i = 0; i < MOVE_SLOTS; i++) {
@@ -5458,16 +5590,42 @@ static void btlDoSwap() {
     btlEnterUntil[1] = now + BTL_ENTER_MS;
     btlSay(T(S_BTL_SENDS), t.name, btlFoe.name);
   } else if (btlSwapWho == 0) {
-    btlSquad[btlSquadAt] = btlYou;     // remember how battered it was
-    btlSquadAt++;
-    btlYou = btlSquad[btlSquadAt];
-    btlHpShown[0] = btlYou.hp;
-    btlSyncSprite(0, btlYou);
-    btlLungeUntil[0] = btlHitUntil[0] = btlFaintUntil[0] = 0;
-    btlEnterUntil[0] = now + BTL_ENTER_MS;
-    btlSay(T(S_BTL_GO), btlYou.name);
+    // The player chooses who goes next, from the whole team. It used to be
+    // simply the next index -- which also lost the fight whenever the one that
+    // fainted was the LAST index, with the others still standing behind it.
+    btlMustPick = true;
+    btlMenu = 2;
   }
   btlSwapWho = -1;
+}
+
+// Is anyone on our side still standing, apart from the one out now?
+bool btlBenchStanding() {
+  for (uint8_t i = 0; i < btlSquadN; i++)
+    if (i != btlSquadAt && !btlSquad[i].fainted()) return true;
+  return false;
+}
+
+// Who can be sent in from the team screen. The one out now cannot, and nor can
+// anyone fainted.
+bool btlCanSendIn(uint8_t i) {
+  if (i >= btlSquadN || i == btlSquadAt) return false;
+  return !btlSquad[i].fainted();
+}
+
+// The replacement for one that fainted: no turn is spent, nobody acts.
+static void btlSendIn(uint8_t i) {
+  if (!btlCanSendIn(i)) return;
+  btlSquad[btlSquadAt] = btlYou;     // remember how battered it was
+  btlSquadAt = i;
+  btlYou = btlSquad[i];
+  btlHpShown[0] = btlYou.hp;
+  btlSyncSprite(0, btlYou);
+  btlLungeUntil[0] = btlHitUntil[0] = btlFaintUntil[0] = 0;
+  btlEnterUntil[0] = millis() + BTL_ENTER_MS;
+  btlMustPick = false;
+  btlMenu = 0;
+  btlSay(T(S_BTL_GO), btlYou.name);
 }
 
 // Switching spends your turn: the opponent still acts. That is what stops it
@@ -5589,8 +5747,22 @@ void battleTap(int16_t x, int16_t y) {
     if (btlLink) { btlLink = false; lanOpen = true; }
     return;
   }
+  if (btlLanEndT0) {          // the ending scene: a tap goes back to the LAN screen
+    if (millis() - btlLanEndT0 < LANEND_MIN_MS) return;   // not by a stray tap
+    btlLanEndT0 = 0;
+    btlFreeSprites();
+    audioMusic(MUS_NONE);
+    battleOpen = false;
+    btlLink = false;
+    lanOpen = true;
+    return;
+  }
   if (btlMsgCount) {          // a tap clears the narration and returns the menu
     btlMsgCount = 0;
+    if (btlOver && btlLink && !btlLinkLost) {   // a real ending gets its scene
+      btlLanEndT0 = millis();
+      return;
+    }
     if (btlOver) {
       btlFreeSprites();
       battleOpen = false;
@@ -5617,30 +5789,27 @@ void battleTap(int16_t x, int16_t y) {
     return;
   }
   if (btlMenu == 2) {
-    if (btlBackTap(x, y)) return;
-    for (uint8_t i = 0; i < btlSquadN && i < 4; i++) {
-      if (!btlCellHit(i, x, y)) continue;
-      const Combatant &m = (i == btlSquadAt) ? btlYou : btlSquad[i];
-      if (i == btlSquadAt || m.fainted()) { sfxPlay(SFX_DENY); return; }
-      sfxPlay(SFX_TAP);
-      if (btlLink && !btlLinkHost) {
-        // The guest asks; it never switches on its own. A switch rides the same
-        // message as a move, so the host spends the turn on it exactly as it
-        // would for us.
-        lan.sendAct(LINK_ACT_SWITCH_TO(i));
-        btlMenu = 0;
-        return;
-      }
-      if (btlLink) {            // host: latched like a move, see btlLinkPoll
-        btlMyAct = LINK_ACT_SWITCH_TO(i);
-        btlMenu = 0;
-        if (!lan.hasPeerAct()) return;
-        btlMyAct = 0;
-      }
-      btlSwitchTo(i);
+    if (!btlMustPick && btlBackTap(x, y)) return;
+    int i = btlTeamHit(x, y);
+    if (i < 0) return;                 // between the cells: nothing
+    if (!btlCanSendIn((uint8_t)i)) { sfxPlay(SFX_DENY); return; }
+    sfxPlay(SFX_TAP);
+    if (btlMustPick) { btlSendIn((uint8_t)i); return; }
+    if (btlLink && !btlLinkHost) {
+      // The guest asks; it never switches on its own. A switch rides the same
+      // message as a move, so the host spends the turn on it exactly as it
+      // would for us.
+      lan.sendAct(LINK_ACT_SWITCH_TO(i));
+      btlMenu = 0;
       return;
     }
-    btlMenu = 0;      // anywhere else backs out
+    if (btlLink) {            // host: latched like a move, see btlLinkPoll
+      btlMyAct = LINK_ACT_SWITCH_TO(i);
+      btlMenu = 0;
+      if (!lan.hasPeerAct()) return;
+      btlMyAct = 0;
+    }
+    btlSwitchTo((uint8_t)i);
     return;
   }
   if (btlBackTap(x, y)) return;
@@ -6211,6 +6380,13 @@ void renderLan() {
 // screen, and the one place a trade touches the party: tradePoll().
 
 int8_t tradeSrc = -1;            // what we offered: 0..5 party, 6.. box
+// The swap, played when theirs arrives: ours leaves in a ball, theirs drops in
+// and opens, and an evolution on arrival flickers between its two forms.
+// Purely drawn: the trade itself is already decided by then (tradePoll).
+uint32_t tradeAnimT0 = 0;
+int16_t tradeAnimGive = 0, tradeAnimFrom = 0, tradeAnimTo = 0;
+#define TRADE_ANIM_MS 3400
+#define TRADE_ANIM_EVO_MS 1000   // extra, when it evolves on arrival
 bool tradeStored = false;        // theirs is in our party or box
 char tradeMsg[48] = "";
 #define TRADE_PER_PAGE 6
@@ -6246,6 +6422,7 @@ void tradeOpenScreen() {
   tradeSrc = -1;
   tradeStored = false;
   tradeMsg[0] = 0;
+  tradeAnimT0 = 0;
 }
 
 // Leaving the trade screen. Before the deal is struck it simply withdraws; once
@@ -6270,6 +6447,10 @@ void tradePoll() {
     pet.registerCaught(from, m.shiny);
     if (evo) { m.dex = evo; pet.registerCaught(evo, m.shiny); }
     tradeStored = party.add(m) || party.boxAdd(m);
+    tradeAnimT0 = millis();
+    tradeAnimGive = lan.tMine.dex;
+    tradeAnimFrom = from;
+    tradeAnimTo = m.dex;
     if (evo) snprintf(tradeMsg, sizeof(tradeMsg), T(S_EVOLVED_FMT), dexName(from), dexName(evo));
     else snprintf(tradeMsg, sizeof(tradeMsg), T(S_TRADE_DONE_FMT), m.nick[0] ? m.nick : dexName(m.dex));
     Serial.printf("trade: got %s (dex %d)%s -- %s\n", DEX_TBL[m.dex].name, m.dex,
@@ -6319,6 +6500,74 @@ static bool tradeCanOk() {
   return !lan.tPhase && lan.tradeHasTheirs() && !lan.tIAccepted && tradeRoom();
 }
 
+uint32_t tradeAnimLen() {
+  return TRADE_ANIM_MS + (tradeAnimTo != tradeAnimFrom ? TRADE_ANIM_EVO_MS : 0);
+}
+bool tradeAnimating() {
+  if (!tradeAnimT0) return false;
+  if (millis() - tradeAnimT0 < tradeAnimLen()) return true;
+  tradeAnimT0 = 0;
+  return false;
+}
+
+static void drawBall(int x, int y, int r) {
+  for (int dy = -r; dy <= r; dy++) {
+    int w = (int)sqrtf((float)(r * r - dy * dy));
+    gfx->fillRect(x - w, y + dy, 2 * w + 1, 1, dy < 0 ? UI_BAR_BAD : UI_WHITE);
+  }
+  gfx->fillRect(x - r, y - 1, 2 * r + 1, 3, INK_K);
+  gfx->drawCircle(x, y, r, INK_K);
+  gfx->fillCircle(x, y, r / 3, UI_WHITE);
+  gfx->drawCircle(x, y, r / 3, INK_K);
+}
+
+// t = ms since theirs arrived:
+//   0- 900  ours glows and becomes a ball that flies up and away
+//   900-1700  theirs, in a ball, drops to the middle and bounces
+//  1700-2200  the ball opens in a flash
+//  2200-      theirs, with stars; an evolution flickers first
+static void drawTradeAnim(uint32_t t) {
+  const int cx = CX, cy = 210;
+  if (t < 900) {
+    const uint8_t *th = thumbs.get(tradeAnimGive);
+    if (t < 400) {
+      for (int r = 20 + (int)t / 8; r > 0; r -= 12) gfx->drawCircle(cx, cy, r, UI_BAR_WARN);
+      if (th) drawThumb(th, cx - GAL_CELL / 2, cy - GAL_CELL / 2, 2, t > 250);
+    } else {
+      float k = (t - 400) / 500.0f;
+      drawBall(cx + (int)(k * 140), cy - (int)(k * k * 300), 16);
+    }
+  } else if (t < 1700) {
+    float k = (t - 900) / 800.0f;
+    int y = (int)(-40 + k * (cy + 40));
+    if (k > 0.8f) y = cy - (int)(sinf((k - 0.8f) * 15.7f) * 18);   // one bounce
+    drawBall(cx - (int)((1 - k) * 120), y, 16);
+  } else if (t < 2200) {
+    int r = (int)((t - 1700) * 110 / 500);
+    gfx->fillCircle(cx, cy, r, UI_WHITE);
+    gfx->drawCircle(cx, cy, r, UI_BAR_WARN);
+  } else {
+    uint32_t u = t - 2200;
+    int16_t show = tradeAnimTo;
+    bool evo = tradeAnimTo != tradeAnimFrom;
+    if (evo && u < TRADE_ANIM_EVO_MS) {
+      uint32_t period = 260 - u * 200 / TRADE_ANIM_EVO_MS;   // faster and faster
+      show = ((u / period) % 2) ? tradeAnimTo : tradeAnimFrom;
+    }
+    const uint8_t *th = thumbs.get(show);
+    if (th) drawThumb(th, cx - GAL_CELL / 2, cy - GAL_CELL / 2, 3,
+                      evo && u < TRADE_ANIM_EVO_MS);
+    for (int i = 0; i < 6; i++) {                 // stars circling it
+      float a = i * 1.047f + u * 0.003f;
+      fxStar(cx + (int)(cosf(a) * 96), cy + (int)(sinf(a) * 70), 6, i % 2 ? UI_BAR_WARN : 0xFEA0);
+    }
+    gfx->setTextColor(UI_INK);
+    gfx->setTextSize(1);
+    gfx->setCursor(CX - (int)strlen(tradeMsg) * 3, 330);
+    gfx->print(tradeMsg);
+  }
+}
+
 void renderTrade() {
   gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
@@ -6326,6 +6575,11 @@ void renderTrade() {
   gfx->setTextSize(2);
   gfx->setCursor(CX - (int)strlen(T(S_TRADE)) * 6, 40);
   gfx->print(T(S_TRADE));
+  if (tradeAnimating()) {                 // the swap has the whole screen
+    drawTradeAnim(millis() - tradeAnimT0);
+    gfx->flush();
+    return;
+  }
   if (lan.peerName[0]) {
     gfx->setTextColor(UI_TRACK);
     gfx->setTextSize(1);
@@ -6401,6 +6655,7 @@ void renderTrade() {
 }
 
 void tradeTap(int16_t x, int16_t y) {
+  if (tradeAnimating()) { tradeAnimT0 = 0; return; }   // a tap skips the swap
   if (y > 370) { sfxPlay(SFX_TAP); tradeClose(); return; }      // back
   if (tradePicking) {
     int8_t c[PARTY_SLOTS + BOX_SLOTS];
