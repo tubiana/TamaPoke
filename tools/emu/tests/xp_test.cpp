@@ -114,7 +114,7 @@ int main(){
   ck(btlSquadN == 3, "the squad is the live creature and the two banked");
   while (btlMsgCount) battleTap(233, 233); // "A wild ... appeared!"
   btlMenu = 2;
-  battleTap(69 + 168 + 10, 274 + 10);      // POKEMON, cell 1: party slot 0 goes out
+  battleTap(313, 119);                     // team screen, cell 1: party slot 0 goes out
   while (btlMsgCount) battleTap(233, 233);
   ck(btlSquadAt == 1, "slot 0's creature is out");
   uint8_t hit = 0;

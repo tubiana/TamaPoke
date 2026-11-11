@@ -33,6 +33,17 @@ This fork adds the animations on top of it:
 - The victory music waits for the click.
 - **A tap skips any animation.** The narration is kept, so nothing is lost by
   skipping.
+- **POKEMON shows the whole team.** It used to reuse the four cells of the
+  move grid, so a fifth and sixth creature could never be sent in.
+- **After a faint, you choose who is next**, from everyone still standing.
+  It used to be simply the next in the list, which also lost the fight when
+  the last in the list fainted with others still standing. Sending one in
+  after a faint costs no turn. In a LAN fight, the host's device still picks
+  the guest's replacement, because the link carries a choice only as a turn.
+- **A LAN fight ends on a scene**: a sunburst and confetti for the winner,
+  rain for the loser, and "Good game" to the other trainer.
+- **A trade plays the swap**: your creature leaves in a ball, theirs drops in
+  and opens, and an evolution on arrival flickers between its two forms.
 
 ## Pokédex box, adoption, experience, trading
 

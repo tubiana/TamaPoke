@@ -3,7 +3,7 @@
 [![Flash in browser](https://img.shields.io/badge/flash-in%20browser-FF6B00?logo=googlechrome&logoColor=white)](https://tubiana.github.io/TamaPoke/web/)
 [![MakerWorld](https://img.shields.io/badge/MakerWorld-3D%20case-00AE42?logo=bambulab&logoColor=white)](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)
 ![Board](https://img.shields.io/badge/board-ESP32--S3%20round%20AMOLED-E7352C?logo=espressif&logoColor=white)
-![Firmware](https://img.shields.io/badge/firmware-v3.33-8A2BE2)
+![Firmware](https://img.shields.io/badge/firmware-v3.34-8A2BE2)
 ![Code](https://img.shields.io/badge/code-MIT-blue)
 ![Languages](https://img.shields.io/badge/languages-6-FFCB05)
 [![Stars](https://img.shields.io/github/stars/tubiana/TamaPoke?style=flat&logo=github&color=yellow)](https://github.com/tubiana/TamaPoke/stargazers)
@@ -86,6 +86,10 @@ creatures. Tap what moves, fight the creature that comes out, and throw a
 The battle system is [Dylan's](#battling). This fork draws every move in its
 type, bursts critical hits into stars and shakes the target on super-effective
 hits. A thrown ball opens, wobbles and clicks shut. A tap skips any animation.
+
+**POKEMON** in a fight opens the whole team, all six, and when one of yours
+faints you choose who goes next. A LAN fight ends on a win or lose scene, and a
+trade plays the swap: your Pokemon leaves in a ball and theirs drops in.
 
 ### Pokédex box, adoption, experience, trading
 

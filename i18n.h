@@ -202,6 +202,8 @@ enum StrId : uint8_t {
   S_MENU_TEAM,  // menu tile: the party
   S_MENU_SETTINGS,  // menu tile: settings, short enough for a tile
   S_MENU_FAREWELL,  // menu tile: say goodbye to the creature (was RETIRE)
+  S_BTL_PICKNEXT,  // team screen title after one of yours fainted
+  S_LAN_GG,  // end of a LAN fight: "Good game, %s!"
   STR_COUNT
 };
 
