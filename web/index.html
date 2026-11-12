@@ -118,6 +118,7 @@
        the port at a time).</p>
     <div class="row">
       <button id="connect">🔌 Connect board</button>
+      <button id="autoall" disabled>📦 Everything: every region + cries</button>
       <button id="auto" data-region="kanto" disabled>⬇️ Kanto sprites (~40 MB)</button>
       <button id="autoj" data-region="johto" disabled>⬇️ Johto (~27 MB)</button>
       <button id="autoh" data-region="hoenn" disabled>⬇️ Hoenn (~38 MB)</button>
@@ -127,6 +128,10 @@
       <button id="autoa" data-region="alola" disabled>⬇️ Alola (~24 MB)</button>
       <button id="autocry" data-region="cries" data-pak="cries.pak" disabled>🔊 Cries, every region (~12 MB)</button>
     </div>
+    <p class="note">📦 <b>Everything</b> sends every region one after the other (and
+       the cries, when this page has them), Kanto first. About 230 MB: count on
+       <b>an hour or more</b>. Leave it running; a region that fails is reported
+       and the next one still goes.</p>
     <p class="note">🔊 The cries are optional: without them the creatures are simply
        silent. They are the games' own sounds (© The Pokémon Company), fetched by
        <code>tools/pack_cries.py</code> from <a href="https://github.com/PokeAPI/cries" target="_blank">PokeAPI/cries</a>.</p>
@@ -250,6 +255,7 @@ async function connectBoard(say) {
     lineBuf = '';
   } catch (e) { say('Could not connect: ' + e.message); port = null; return false; }
   for (const b of document.querySelectorAll('[data-region]')) b.disabled = false;
+  document.getElementById('autoall').disabled = false;
   document.getElementById('files').disabled = false;
   for (const id of ['saveDown', 'saveUpBtn', 'saveDisc']) document.getElementById(id).disabled = false;
   document.getElementById('connect').disabled = true;
@@ -262,6 +268,7 @@ async function disconnectBoard() {
   try { reader && reader.releaseLock(); writer && writer.releaseLock(); await port.close(); } catch (e) {}
   port = reader = writer = null;
   for (const b of document.querySelectorAll('[data-region]')) b.disabled = true;
+  document.getElementById('autoall').disabled = true;
   document.getElementById('files').disabled = true;
   for (const id of ['saveDown', 'saveUpBtn', 'saveDisc']) document.getElementById(id).disabled = true;
   document.getElementById('connect').disabled = false;
@@ -438,6 +445,24 @@ async function loadRegion(btn) {
 // Driven off the markup, so adding a region is ONE new button and nothing
 // else. This was three separate hardcoded id lists.
 for (const b of document.querySelectorAll('[data-region]')) b.onclick = () => loadRegion(b);
+
+// Everything, one region after another, in page order (Kanto first: it carries
+// thumbs.bin). It goes through the same loadRegion() as each button, so it is
+// the buttons pressed in turn, not a second way of sending. A region the page
+// has no bundle for was greyed by probeRegions() and is skipped.
+document.getElementById('autoall').onclick = async () => {
+  if (!writer) { log('Connect the board first.'); return; }
+  const all = document.getElementById('autoall');
+  const todo = [...document.querySelectorAll('[data-region]')].filter(b => !b.disabled);
+  if (!todo.length) { log('Nothing to send: no bundle is published here.'); return; }
+  all.disabled = true;
+  for (let i = 0; i < todo.length; i++) {
+    log(`--- ${i + 1}/${todo.length}: ${todo[i].dataset.region} ---`);
+    await loadRegion(todo[i]);
+  }
+  log('Everything sent. Restart the board (PWR button).');
+  all.disabled = false;
+};
 
 document.getElementById('files').onchange = async (ev) => {
   const files = [...ev.target.files];
