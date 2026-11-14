@@ -204,6 +204,11 @@ enum StrId : uint8_t {
   S_MENU_FAREWELL,  // menu tile: say goodbye to the creature (was RETIRE)
   S_BTL_PICKNEXT,  // team screen title after one of yours fainted
   S_LAN_GG,  // end of a LAN fight: "Good game, %s!"
+  S_VOICE,  // OPTIONS: read out what is touched
+  S_SAY_FEED,  // spoken name of the home row's food icon
+  S_SAY_LIGHT,  // ...the light icon
+  S_SAY_BATH,  // ...the bath icon
+  S_SAY_TRAIN,  // ...the training icon
   STR_COUNT
 };
 

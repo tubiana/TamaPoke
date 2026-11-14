@@ -41,17 +41,45 @@
 #include "rtcbat.h"
 #include "i18n.h"
 #include "audio.h"
+#include "speech.h"
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
-#define FW_VERSION "3.35"
+#define FW_VERSION "3.36"
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   LCD_CS, LCD_SCLK, LCD_SDIO0, LCD_SDIO1, LCD_SDIO2, LCD_SDIO3);
 Arduino_CO5300 *panel = new Arduino_CO5300(
   bus, LCD_RESET, 0 /*rotation*/, LCD_WIDTH, LCD_HEIGHT, 6, 0, 0, 0);
 // Framebuffer completo en PSRAM: dibujamos todo y hacemos flush() (sin parpadeo)
-Arduino_Canvas *gfx = new Arduino_Canvas(LCD_WIDTH, LCD_HEIGHT, panel);
+#if defined(ESP_PLATFORM)
+// The canvas, plus a note of every glyph and button drawn, so speech.cpp knows
+// what is on screen (see speech.h). Declared as SpeakCanvas so the non-virtual
+// round-rect calls also land here.
+class SpeakCanvas : public Arduino_Canvas {
+ public:
+  using Arduino_Canvas::Arduino_Canvas;
+  size_t write(uint8_t c) override {
+    speechGlyph(cursor_x, cursor_y, textsize_x, textsize_y, (char)c);
+    return Arduino_Canvas::write(c);
+  }
+  void flush(bool force_flush = false) override {
+    speechFrame();
+    Arduino_Canvas::flush(force_flush);
+  }
+  void fillRoundRect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t c) {
+    speechBox(x, y, w, h);
+    Arduino_Canvas::fillRoundRect(x, y, w, h, r, c);
+  }
+  void drawRoundRect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t c) {
+    speechBox(x, y, w, h);
+    Arduino_Canvas::drawRoundRect(x, y, w, h, r, c);
+  }
+};
+SpeakCanvas *gfx = new SpeakCanvas(LCD_WIDTH, LCD_HEIGHT, panel);
+#else
+Arduino_Canvas *gfx = new Arduino_Canvas(LCD_WIDTH, LCD_HEIGHT, panel);  // the emulator's stub calls speech*() itself
+#endif
 
 TouchDrvCST92xx touch;
 Pet pet;
@@ -1115,6 +1143,7 @@ void setup() {
 
   party.begin();
   pet.begin();
+  speechSetEnabled(pet.voiceOn);
   pcStartup();
   sdBegin();
   thumbs.load();
@@ -1863,6 +1892,23 @@ void handleSerial() {
   if (line.length() == 0) return;
   if (sdSerialCommand(line)) return;
 
+  if (line.startsWith("SAY ")) {        // speak a text: SAY Een wilde PIKACHU!
+    Serial.println(speechSay(line.c_str() + 4) ? "SAID" : "NOT SAID");
+    return;
+  } else if (line == "PWR") {           // battery / charger state straight from the PMU
+    batDebug();
+    return;
+  } else if (line == "SPK") {           // the texts on screen and where they can be touched
+    speechDump();
+    return;
+  } else if (line.startsWith("TOUCH ")) {   // speak what is at x y, as a finger would
+    int tx = 0, ty = 0;
+    sscanf(line.c_str() + 6, "%d %d", &tx, &ty);
+    bool ok = speechAt(tx, ty, true);
+    Serial.println(ok ? "SAID" : "NOT SAID");
+    return;
+  }
+
   if (line == "HATCH") {
     pet.eggTap(); pet.eggTap(); pet.eggTap();
     Serial.println("DONE");
@@ -2214,7 +2260,10 @@ void handleTouch() {
     if (screenOff) pet.setScreenOff(false);        // waking the screen wakes it
     screenOff = false;
     wakeUI();
+    if (!swallowGesture) speechAt(x, y, true);     // read out what the finger is on
   } else if (pressed) {  // sigue apoyado
+    // sliding the finger onto other text reads that one too
+    if (!swallowGesture && (abs(x - tXl) > 8 || abs(y - tYl) > 8)) speechAt(x, y, false);
     tXl = x;
     tYl = y;
     // pulsacion larga sin moverse sobre el bicho -> dialogo de soltar
@@ -4025,10 +4074,11 @@ static void drawSettingsDots() {
 // OPTIONS. Both settings are the player's, saved with the game, and apply at
 // once -- there is no OK to forget.
 #define OPT_KID_X 296
-#define OPT_KID_Y 104
+#define OPT_KID_Y 84
+#define OPT_VOICE_Y 150               // VOICE: the same switch, under kid mode
 #define OPT_KID_W 92
 #define OPT_KID_H UI_TAP_MIN
-#define OPT_SPD_Y 226                 // the - / + boxes, drawn by drawClockBtn
+#define OPT_SPD_Y 238                 // the - / + boxes, drawn by drawClockBtn
 #define OPT_MINUS_X 112
 #define OPT_PLUS_X 296
 #define OPT_BD_Y 350                  // the birthday's four buttons
@@ -4038,6 +4088,32 @@ static void drawSettingsDots() {
 #define OPT_BD_DP_X 172
 #define OPT_BD_MM_X 254               // month - / +
 #define OPT_BD_MP_X 334
+// A label on the left and an ON/OFF switch on the right, at row y.
+static void optSwitch(int y, const char *label, bool on) {
+  gfx->setTextSize(2);
+  gfx->setTextColor(UI_INK);
+  gfx->setCursor(80, y + 14);
+  gfx->print(label);
+  const char *l = on ? T(S_ON) : T(S_OFF);
+  gfx->fillRoundRect(OPT_KID_X, y, OPT_KID_W, OPT_KID_H, 10, on ? UI_BAR_OK : UI_WHITE);
+  gfx->drawRoundRect(OPT_KID_X, y, OPT_KID_W, OPT_KID_H, 10, UI_INK);
+  gfx->setTextColor(on ? UI_BG_DAY : UI_INK);
+  gfx->setCursor(OPT_KID_X + (OPT_KID_W - (int)strlen(l) * 12) / 2, y + 14);
+  gfx->print(l);
+}
+
+// Where a switch's row answers a tap: generous, these are tapped by a parent,
+// but on a 1.75" round panel. The two rows' areas never meet.
+bool optSwitchHit(int16_t x, int16_t y, int row) {
+  return y >= row - 8 && y <= row + OPT_KID_H + 8 && x >= OPT_KID_X - 10 && x <= OPT_KID_X + OPT_KID_W + 10;
+}
+
+// For the tests: the two switch rows, asked rather than restated.
+void optSwitchRows(int *kidY, int *voiceY) {
+  if (kidY) *kidY = OPT_KID_Y + OPT_KID_H / 2;
+  if (voiceY) *voiceY = OPT_VOICE_Y + OPT_KID_H / 2;
+}
+
 void renderOptions() {
   gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
@@ -4047,22 +4123,20 @@ void renderOptions() {
   gfx->setCursor(CX - strlen(T(S_OPTIONS)) * 9, 44);
   gfx->print(T(S_OPTIONS));
 
-  // kid mode: a switch
-  gfx->setTextSize(2);
-  gfx->setTextColor(UI_INK);
-  gfx->setCursor(80, OPT_KID_Y + 14);
-  gfx->print(T(S_KID_MODE));
-  bool kid = pet.kidMode;
-  const char *kl = kid ? T(S_ON) : T(S_OFF);
-  gfx->fillRoundRect(OPT_KID_X, OPT_KID_Y, OPT_KID_W, OPT_KID_H, 10, kid ? UI_BAR_OK : UI_WHITE);
-  gfx->drawRoundRect(OPT_KID_X, OPT_KID_Y, OPT_KID_W, OPT_KID_H, 10, UI_INK);
-  gfx->setTextColor(kid ? UI_BG_DAY : UI_INK);
-  gfx->setCursor(OPT_KID_X + (OPT_KID_W - (int)strlen(kl) * 12) / 2, OPT_KID_Y + 14);
-  gfx->print(kl);
+  // kid mode and the voice: two switches, the same shape
+  optSwitch(OPT_KID_Y, T(S_KID_MODE), pet.kidMode);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(1);
-  gfx->setCursor(CX - (int)strlen(T(S_KID_HINT)) * 3, OPT_KID_Y + OPT_KID_H + 12);
+  gfx->setCursor(CX - (int)strlen(T(S_KID_HINT)) * 3, OPT_KID_Y + OPT_KID_H + 6);
   gfx->print(T(S_KID_HINT));
+  optSwitch(OPT_VOICE_Y, T(S_VOICE), pet.voiceOn);
+  // On with no pack for this language says nothing at all, so say why.
+  if (pet.voiceOn && !speechHasPack()) {
+    gfx->setTextColor(UI_BAR_WARN);
+    gfx->setTextSize(1);
+    gfx->setCursor(CX - (int)strlen(T(S_NEED_PACK)) * 3, OPT_VOICE_Y + OPT_KID_H + 6);
+    gfx->print(T(S_NEED_PACK));
+  }
 
   // the needs speed: - 50% +
   gfx->setTextSize(2);
@@ -4128,9 +4202,13 @@ void optionsTap(int16_t x, int16_t y) {
   }
   if (optBdHit(x, y, OPT_BD_MM_X)) { pet.setBirthday(m > 1 ? m - 1 : 12, d ? d : 1); sfxPlay(SFX_TAP); return; }
   if (optBdHit(x, y, OPT_BD_MP_X)) { pet.setBirthday(m < 12 ? m + 1 : 1, d ? d : 1); sfxPlay(SFX_TAP); return; }
-  // generous: these are tapped by a parent, but on a 1.75" round panel
-  if (y >= OPT_KID_Y - 8 && y <= OPT_KID_Y + OPT_KID_H + 8 &&
-      x >= OPT_KID_X - 10 && x <= OPT_KID_X + OPT_KID_W + 10) {
+  if (optSwitchHit(x, y, OPT_VOICE_Y)) {
+    pet.setVoice(!pet.voiceOn);
+    speechSetEnabled(pet.voiceOn);
+    sfxPlay(SFX_TAP);
+    return;
+  }
+  if (optSwitchHit(x, y, OPT_KID_Y)) {
     bool on = !pet.kidMode;
     pet.setKidMode(on);
     if (on && audioVolume() > KID_VOL_MAX) audioSetVolume(KID_VOL_MAX);
@@ -9126,6 +9204,9 @@ void drawButtons() {
     if (!pet.sleeping) gfx->fillRoundRect(bx, by, 2 * BTN_HALF, 2 * BTN_HALF, 14, UI_WHITE);
     gfx->drawRoundRect(bx, by, 2 * BTN_HALF, 2 * BTN_HALF, 14, inkColor());
     if (!off) drawMap(buttons[i].icon, 16, buttons[i].cx - 16, buttons[i].cy - 16, 2, false);
+    // icons have no text to read, so give them a spoken name (tools/gen_voice.py harvests these)
+    static const StrId SAY[BTN_COUNT] = { S_SAY_FEED, S_SAY_LIGHT, S_SAY_BATH, S_SAY_TRAIN };
+    speechRegion(bx, by, 2 * BTN_HALF, 2 * BTN_HALF, T(SAY[i]));
   }
 }
 

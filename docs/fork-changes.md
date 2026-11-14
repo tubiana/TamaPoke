@@ -77,6 +77,25 @@ This fork adds the animations on top of it:
 - **A finishable Pokédex.** The totals count only species that can be drawn:
   790, not 809.
 
+## The voice (v3.36), by Carl Megens
+
+- **Touching text reads it out**, in the UI language, when **VOICE** is on
+  (SETTINGS > OPTIONS, under kid mode; off by default). Icons have spoken names
+  too. A new touch cuts off what was still being said.
+- How it knows what is under the finger without touching the ~250 places that
+  draw text: the canvas notes every glyph and rounded box it draws
+  (`speech.cpp`), so after each frame it knows which strings are where and
+  which button each sits on.
+- The clips are pre-synthesised with Piper by `tools/gen_voice.py`: every UI
+  string, every Pokemon and move name as that language shows it, every number
+  up to 1100. A text is looked up by its words, longest phrase first. The
+  screen has no accents, so the generator says the words with them (BANO is
+  said "baño", the Pokemon names as PokeAPI spells them).
+- One pack per language, `/voice/<lang>/` on the card, sent from the web
+  installer (20-35 MB each). Turning VOICE on for a language with no pack says so.
+- Carl Megens built it for his Dutch children, along with the Dutch UI; the
+  per-language packs, the switch and the installer buttons came here.
+
 ## For kids
 
 - **Kid mode** keeps an awake creature's needs above 20. The creature never

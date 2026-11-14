@@ -1,0 +1,449 @@
+#include "speech.h"
+#include "audio.h"
+#include "i18n.h"
+#include <Arduino.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+#if defined(ESP_PLATFORM)
+#include <SD_MMC.h>
+extern bool sdReady;
+static int32_t vSize(const char *p) {
+  if (!sdReady || !SD_MMC.exists(p)) return -1;
+  File f = SD_MMC.open(p);
+  if (!f) return -1;
+  int32_t n = (int32_t)f.size();
+  f.close();
+  return n;
+}
+static bool vRead(const char *p, uint32_t off, void *buf, uint32_t n) {
+  if (!sdReady) return false;
+  File f = SD_MMC.open(p);
+  if (!f) return false;
+  bool ok = f.seek(off) && f.read((uint8_t *)buf, n) == n;
+  f.close();
+  return ok;
+}
+#else  // desktop emulator: clips from $TAMAPOKE_VOICE (the folder holding voice/)
+static FILE *vOpen(const char *p) {
+  const char *base = getenv("TAMAPOKE_VOICE");
+  if (!base) return nullptr;
+  char full[512];
+  snprintf(full, sizeof(full), "%s%s", base, p);
+  return fopen(full, "rb");
+}
+static int32_t vSize(const char *p) {
+  FILE *f = vOpen(p);
+  if (!f) return -1;
+  fseek(f, 0, SEEK_END);
+  int32_t n = (int32_t)ftell(f);
+  fclose(f);
+  return n;
+}
+static bool vRead(const char *p, uint32_t off, void *buf, uint32_t n) {
+  FILE *f = vOpen(p);
+  if (!f) return false;
+  bool ok = fseek(f, off, SEEK_SET) == 0 && fread(buf, 1, n, f) == n;
+  fclose(f);
+  return ok;
+}
+#endif
+
+// ---------------------------------------------------------------------------
+// What is on screen
+// ---------------------------------------------------------------------------
+#define MAX_RUNS 112
+#define RUN_LEN 48
+#define MAX_BOXES 64
+struct Run {
+  int16_t x1, y1, x2, y2;   // the text itself
+  int16_t hx1, hy1, hx2, hy2;   // where a touch counts: its button, else the text
+  uint8_t sx, len;
+  bool region;
+  char t[RUN_LEN];
+};
+struct Box { int16_t x1, y1, x2, y2; };
+static Run cur[MAX_RUNS], shown[MAX_RUNS];
+static Box boxes[MAX_BOXES];
+static int nCur, nShown, nBoxes;
+static bool runOpen;
+static char lastSaid[RUN_LEN];
+
+static bool hasWord(const char *s) {
+  for (; *s; s++)
+    if ((*s >= 'A' && *s <= 'Z') || (*s >= 'a' && *s <= 'z') || (*s >= '0' && *s <= '9')) return true;
+  return false;
+}
+
+void speechGlyph(int16_t x, int16_t y, uint8_t sx, uint8_t sy, char c) {
+  if (c == '\n' || c == '\r') { runOpen = false; return; }
+  Run *r = (runOpen && nCur) ? &cur[nCur - 1] : nullptr;
+  if (r && (r->region || r->y1 != y || r->sx != sx || r->x2 != x || r->len >= RUN_LEN - 1)) r = nullptr;
+  if (!r) {
+    if (c == ' ' || nCur >= MAX_RUNS) { runOpen = false; return; }
+    r = &cur[nCur++];
+    r->x1 = r->x2 = x;
+    r->y1 = y;
+    r->y2 = y + 8 * (sy ? sy : 1);
+    r->sx = sx;
+    r->len = 0;
+    r->region = false;
+  }
+  r->t[r->len++] = c;
+  r->t[r->len] = 0;
+  r->x2 = x + 6 * (sx ? sx : 1);
+  runOpen = true;
+}
+
+void speechBox(int16_t x, int16_t y, int16_t w, int16_t h) {
+  // a panel the size of the screen is a background, not a button
+  if (w <= 0 || h <= 0 || (int32_t)w * h > 300 * 200 || nBoxes >= MAX_BOXES) return;
+  boxes[nBoxes++] = { x, y, (int16_t)(x + w), (int16_t)(y + h) };
+}
+
+void speechRegion(int16_t x, int16_t y, int16_t w, int16_t h, const char *text) {
+  runOpen = false;
+  if (nCur >= MAX_RUNS) return;
+  Run &r = cur[nCur++];
+  r.x1 = r.hx1 = x;
+  r.y1 = r.hy1 = y;
+  r.x2 = r.hx2 = x + w;
+  r.y2 = r.hy2 = y + h;
+  r.sx = 0;
+  r.region = true;
+  strncpy(r.t, text, RUN_LEN - 1);
+  r.t[RUN_LEN - 1] = 0;
+  r.len = strlen(r.t);
+}
+
+void speechFrame() {
+  runOpen = false;
+  // A flush with no text at all is an animation step that only redrew a sprite:
+  // what was on screen is still there, so keep it.
+  if (nCur == 0) { nBoxes = 0; return; }
+  // Outlined text (printRinged) is the same string drawn 9 times a pixel or two
+  // apart: keep one, so a busy screen does not run out of slots.
+  int kept = 0;
+  for (int i = 0; i < nCur; i++) {
+    Run &r = cur[i];
+    while (r.len && r.t[r.len - 1] == ' ') r.t[--r.len] = 0;
+    bool dup = false;
+    for (int j = 0; j < kept && !dup; j++)
+      dup = !cur[j].region && !r.region && !strcmp(cur[j].t, r.t) && abs(cur[j].x1 - r.x1) <= 4 &&
+            abs(cur[j].y1 - r.y1) <= 4;
+    if (!dup) cur[kept++] = r;
+  }
+  nCur = kept;
+  for (int i = 0; i < nCur; i++) {
+    Run &r = cur[i];
+    if (r.region) continue;
+    r.hx1 = r.x1; r.hy1 = r.y1; r.hx2 = r.x2; r.hy2 = r.y2;
+    int cx = (r.x1 + r.x2) / 2, cy = (r.y1 + r.y2) / 2;
+    int32_t best = INT32_MAX;
+    for (int b = 0; b < nBoxes; b++) {
+      const Box &k = boxes[b];
+      if (cx < k.x1 || cx > k.x2 || cy < k.y1 || cy > k.y2) continue;
+      int32_t a = (int32_t)(k.x2 - k.x1) * (k.y2 - k.y1);
+      if (a < best) { best = a; r.hx1 = k.x1; r.hy1 = k.y1; r.hx2 = k.x2; r.hy2 = k.y2; }
+    }
+  }
+  memcpy(shown, cur, sizeof(Run) * nCur);
+  nShown = nCur;
+  nCur = 0;
+  nBoxes = 0;
+}
+
+void speechDump() {
+  Serial.printf("SPEECH ready=%d runs=%d\n", speechReady(), nShown);
+  for (int i = 0; i < nShown; i++) {
+    const Run &r = shown[i];
+    Serial.printf("  [%d,%d %d,%d] hit[%d,%d %d,%d]%s \"%s\"\n", r.x1, r.y1, r.x2, r.y2, r.hx1, r.hy1,
+                  r.hx2, r.hy2, r.region ? " region" : "", r.t);
+  }
+  Serial.println("SPEECH_END");
+}
+
+// ---------------------------------------------------------------------------
+// Tokens and the clip index
+// ---------------------------------------------------------------------------
+uint32_t speechHash(const char *s, int n) {
+  uint32_t h = 2166136261u;
+  for (int i = 0; i < n; i++) { h ^= (uint8_t)s[i]; h *= 16777619u; }
+  return h;
+}
+
+static int cls(char c) {
+  if (c >= 'A' && c <= 'Z') return 1;
+  if (c >= 'a' && c <= 'z') return 1;
+  if (c >= '0' && c <= '9') return 2;
+  return 0;
+}
+
+int speechTokens(const char *text, char *out, int outLen, int16_t *starts, int maxTok) {
+  int n = 0, o = 0;
+  auto add = [&](const char *w, int len) {
+    if (n >= maxTok || o + len + 1 >= outLen) return;
+    if (n) out[o++] = ' ';
+    starts[n++] = o;
+    memcpy(out + o, w, len);
+    o += len;
+    out[o] = 0;
+  };
+  out[0] = 0;
+  const char *p = text;
+  while (*p) {
+    int c = cls(*p);
+    if (!c) {
+      bool numBefore = p > text && cls(p[-1]) == 2;
+      bool numAfter = cls(p[1]) == 2;
+      if (*p == '/' && numBefore && numAfter) add("slash", 5);
+      else if (*p == '+' && numAfter) add("plus", 4);
+      p++;
+      continue;
+    }
+    const char *s = p;
+    while (*p && cls(*p) == c) p++;
+    char w[32];
+    int len = 0;
+    if (c == 2) {
+      while (s < p - 1 && *s == '0') s++;   // "05" -> "5"
+    }
+    for (const char *q = s; q < p && len < 31; q++) w[len++] = (*q >= 'A' && *q <= 'Z') ? *q + 32 : *q;
+    add(w, len);
+  }
+  return n;
+}
+
+struct VEntry { uint32_t hash; uint16_t chunk, pad; uint32_t off, len; };
+// One index per language, loaded the first time that language speaks and then
+// kept (~45 KB of PSRAM each). Never freed: the say task on core 0 may still be
+// reading one when the language changes, and a pointer that stays valid is
+// simpler than a lock.
+struct VPack { VEntry *idx; uint32_t count; uint8_t maxTok; uint32_t lastTry; bool tried; };
+static VPack gPack[LANG_COUNT];
+static bool gOn = false;
+
+// In Lang order. Sized by its initialiser, so a language added to the enum and
+// not here fails to build instead of reading a null directory.
+static const char *const LANG_DIR[] = { "es", "en", "fr", "de", "it", "pt", "nl" };
+static_assert(sizeof(LANG_DIR) / sizeof(LANG_DIR[0]) == LANG_COUNT, "a voice folder per UI language");
+const char *speechLangDir(uint8_t lang) { return LANG_DIR[lang % LANG_COUNT]; }
+
+static VPack *loadIndex(uint8_t lang) {
+  VPack &p = gPack[lang % LANG_COUNT];
+  if (p.idx) return &p;
+  // a card put in later, or a pack sent over PUT, is found within 10 s
+  if (p.tried && millis() - p.lastTry < 10000) return nullptr;
+  p.tried = true;
+  p.lastTry = millis();
+  char path[32];
+  snprintf(path, sizeof(path), "/voice/%s/index.bin", speechLangDir(lang));
+  int32_t n = vSize(path);
+  if (n < 12) return nullptr;
+  uint8_t hdr[12];
+  if (!vRead(path, 0, hdr, 12) || memcmp(hdr, "VIX1", 4)) return nullptr;
+  uint32_t count;
+  memcpy(&count, hdr + 4, 4);
+  if ((int32_t)(12 + count * sizeof(VEntry)) > n) return nullptr;
+  VEntry *idx = (VEntry *)ps_malloc(count * sizeof(VEntry));
+  if (!idx) return nullptr;
+  if (!vRead(path, 12, idx, count * sizeof(VEntry))) { free(idx); return nullptr; }
+  p.count = count;
+  p.maxTok = hdr[8] ? hdr[8] : 1;
+  p.idx = idx;   // last: the say task only ever sees a whole index
+  return &p;
+}
+
+void speechSetEnabled(bool on) { gOn = on; }
+bool speechHasPack() { return loadIndex(gLang) != nullptr; }
+bool speechReady() { return gOn && speechHasPack(); }
+
+static const VEntry *find(const VPack &p, const char *s, int n) {
+  uint32_t h = speechHash(s, n);
+  uint32_t lo = 0, hi = p.count;
+  while (lo < hi) {
+    uint32_t m = (lo + hi) / 2;
+    if (p.idx[m].hash < h) lo = m + 1;
+    else hi = m;
+  }
+  return (lo < p.count && p.idx[lo].hash == h) ? &p.idx[lo] : nullptr;
+}
+
+#define SAY_MAX (16000 * 10)   // 10 s of 8-bit 16 kHz
+#define SAY_GAP 960            // 60 ms between words
+
+// Looking the words up and reading the clips off the SD takes 50-150 ms. Done
+// in the touch handler that froze the game loop for that long: taps felt slow
+// and a swipe across a few texts ran past its 800 ms and was lost. So on the
+// board the work happens in its own task on core 0 and speechSay() only hands
+// the text over. A newer text replaces one that has not started yet.
+static bool sayNow(const char *text);
+
+#if defined(ESP_PLATFORM)
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+static TaskHandle_t gSayTask;
+static portMUX_TYPE gSayMux = portMUX_INITIALIZER_UNLOCKED;
+static char gSayText[RUN_LEN * 4];
+static bool gSayPending;
+
+static void sayTask(void *) {
+  char text[sizeof(gSayText)];
+  for (;;) {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    for (;;) {
+      portENTER_CRITICAL(&gSayMux);
+      bool have = gSayPending;
+      if (have) { memcpy(text, gSayText, sizeof(text)); gSayPending = false; }
+      portEXIT_CRITICAL(&gSayMux);
+      if (!have) break;
+      sayNow(text);
+    }
+  }
+}
+
+bool speechSay(const char *text) {
+  if (!speechReady() || !audioEnabled() || !text || !*text) return false;
+  if (!gSayTask) xTaskCreatePinnedToCore(sayTask, "say", 6144, nullptr, 1, &gSayTask, 0);
+  if (!gSayTask) return false;
+  audioStopPcm();   // a new touch cuts off whatever was still being said, right now
+  portENTER_CRITICAL(&gSayMux);
+  strncpy(gSayText, text, sizeof(gSayText) - 1);
+  gSayText[sizeof(gSayText) - 1] = 0;
+  gSayPending = true;
+  portEXIT_CRITICAL(&gSayMux);
+  xTaskNotifyGive(gSayTask);
+  return true;
+}
+#else
+bool speechSay(const char *text) {
+  if (!speechReady() || !audioEnabled()) return false;
+  return sayNow(text);
+}
+#endif
+
+// The clips for a number token: its own if the pack has one, else built from
+// the thousands, hundreds and the rest, else its digits. Returns the new np.
+static int sayNumber(const VPack &pk, const char *s, int len, const VEntry **parts, int np, int max) {
+  bool digits = len > 0 && len <= 4;
+  for (int k = 0; k < len; k++) digits = digits && s[k] >= '0' && s[k] <= '9';
+  if (digits) {
+    int v = atoi(s);
+    char b[8];
+    const int unit[3] = { 1000, 100, 1 };
+    int rest = v, before = np;
+    bool whole = true;
+    for (int u = 0; u < 3 && rest && whole; u++) {
+      int part = u < 2 ? rest / unit[u] * unit[u] : rest;
+      if (!part) continue;
+      int bl = snprintf(b, sizeof(b), "%d", part);
+      // the pack has 0..200: say 150 whole rather than "100" + "50"
+      if (u == 1 && rest <= 200) { bl = snprintf(b, sizeof(b), "%d", rest); part = rest; }
+      const VEntry *e = find(pk, b, bl);
+      if (!e || np >= max) whole = false;
+      else { parts[np++] = e; rest -= part; }
+    }
+    if (whole && np > before) return np;
+    np = before;
+    if (v == 0) {
+      if (const VEntry *e = find(pk, "0", 1)) { if (np < max) parts[np++] = e; return np; }
+    }
+  }
+  for (int k = 0; k < len && np < max; k++)
+    if (s[k] >= '0' && s[k] <= '9')
+      if (const VEntry *d = find(pk, s + k, 1)) parts[np++] = d;
+  return np;
+}
+
+// The clips a text is said with, in order: its phrases longest first, numbers
+// built from parts, unknown words skipped. Returns how many.
+static int plan(const VPack *pk, const char *text, const VEntry **parts) {
+  char norm[160];
+  int16_t st[24];
+  int n = speechTokens(text, norm, sizeof(norm), st, 24);
+  if (!n) return 0;
+
+  int np = 0;
+  for (int i = 0; i < n && np < 32;) {
+    const VEntry *e = nullptr;
+    int L = pk->maxTok < n - i ? pk->maxTok : n - i;
+    for (; L >= 1; L--) {
+      int end = (i + L < n) ? st[i + L] - 1 : (int)strlen(norm);
+      if ((e = find(*pk, norm + st[i], end - st[i]))) break;
+    }
+    if (e) { parts[np++] = e; i += L; continue; }
+    // A number with no clip of its own is put together from ones that have:
+    // the packs hold 0..200 and the hundreds, so 347 is "300" + "47" and 1047
+    // is "1000" + "47" -- that reads right in all seven languages and saves a
+    // thousand clips. Failing that it is read digit by digit; an unknown word
+    // is skipped.
+    int end = (i + 1 < n) ? st[i + 1] - 1 : (int)strlen(norm);
+    np = sayNumber(*pk, norm + st[i], end - st[i], parts, np, 32);
+    i++;
+  }
+#if !defined(ESP_PLATFORM)
+  printf("speech: \"%s\" -> %s (%d clips)\n", text, norm, np);
+#endif
+  return np;
+}
+
+int speechPlan(const char *text, uint32_t *lens, int max) {
+  const VPack *pk = loadIndex(gLang);
+  if (!pk || !text) return 0;
+  const VEntry *parts[32];
+  int np = plan(pk, text, parts);
+  for (int i = 0; i < np && i < max; i++) lens[i] = parts[i]->len;
+  return np;
+}
+
+static bool sayNow(const char *text) {
+  uint8_t lang = gLang;
+  const VPack *pk = loadIndex(lang);
+  if (!pk) return false;
+  const VEntry *parts[32];
+  int np = plan(pk, text, parts);
+  if (!np) return false;
+
+  uint32_t total = 0;
+  for (int i = 0; i < np; i++) total += parts[i]->len + (i ? SAY_GAP : 0);
+  if (total > SAY_MAX) total = SAY_MAX;
+  int8_t *pcm = (int8_t *)ps_malloc(total);
+  if (!pcm) return false;
+  uint32_t at = 0;
+  for (int i = 0; i < np && at < total; i++) {
+    if (i) {
+      uint32_t g = SAY_GAP < total - at ? SAY_GAP : total - at;
+      memset(pcm + at, 0, g);
+      at += g;
+    }
+    uint32_t len = parts[i]->len < total - at ? parts[i]->len : total - at;
+    char path[32];
+    snprintf(path, sizeof(path), "/voice/%s/v%02u.bin", speechLangDir(lang), parts[i]->chunk);
+    if (!vRead(path, parts[i]->off, pcm + at, len)) memset(pcm + at, 0, len);
+    at += len;
+  }
+  audioStopPcm();   // and anything queued since
+  audioPlayPcm(pcm, at);
+  return true;
+}
+
+bool speechAt(int16_t x, int16_t y, bool fresh) {
+  if (fresh) lastSaid[0] = 0;
+  if (!nShown || !speechReady()) return false;
+  int best = -1;
+  int32_t bestD = INT32_MAX, bestA = INT32_MAX;
+  for (int i = 0; i < nShown; i++) {
+    const Run &r = shown[i];
+    if (!hasWord(r.t)) continue;
+    int dx = x < r.hx1 ? r.hx1 - x : (x > r.hx2 ? x - r.hx2 : 0);
+    int dy = y < r.hy1 ? r.hy1 - y : (y > r.hy2 ? y - r.hy2 : 0);
+    int32_t d = dx * dx + dy * dy;
+    int32_t a = (int32_t)(r.hx2 - r.hx1) * (r.hy2 - r.hy1);
+    if (d < bestD || (d == bestD && a < bestA)) { best = i; bestD = d; bestA = a; }
+  }
+  if (best < 0 || bestD > 28 * 28) return false;
+  if (!strcmp(shown[best].t, lastSaid)) return false;
+  strcpy(lastSaid, shown[best].t);
+  return speechSay(shown[best].t);
+}

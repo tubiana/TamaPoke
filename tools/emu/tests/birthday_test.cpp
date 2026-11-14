@@ -35,6 +35,7 @@ static bool flushes(){ gfx->frameReady=false; render(); return gfx->frameReady; 
 #define BD_DAY_PLUS_X (172 + 20)
 #define BD_MON_PLUS_X (334 + 20)
 #define BD_Y (350 + 20)
+void optSwitchRows(int *kidY, int *voiceY);
 #define PRESENT_CX (50 + 23)
 #define PRESENT_CY (250 + 20)
 #define D_2026_07_14 20648u           // days since 1970, from Python's datetime
@@ -51,6 +52,23 @@ int main(){
 
   // ---- OPTIONS: set the birthday to 14 July by taps alone ----
   openClock(); settingsPage = 2;   // OPTIONS
+
+  // ---- the VOICE switch, beside kid mode ----
+  {
+    int kidY, voiceY;
+    optSwitchRows(&kidY, &voiceY);
+    bool kid = pet.kidMode;
+    ck(!pet.voiceOn, "VOICE starts off");
+    onTap(340, voiceY);
+    ck(pet.voiceOn && pet.kidMode == kid, "tapping its switch turns it on, and only it");
+    ck(flushes(), "OPTIONS with VOICE on and no pack (it says why) flushes");
+    { Pet again; again.begin(); ck(again.voiceOn, "and it is saved"); }
+    onTap(340, kidY);
+    ck(pet.kidMode != kid && pet.voiceOn, "kid mode's switch is its own");
+    onTap(340, kidY);
+    onTap(340, voiceY);
+    ck(!pet.voiceOn, "and VOICE turns off again");
+  }
   ck(pet.bdayMonth == 0, "no birthday to begin with");
   onTap(BD_DAY_PLUS_X, BD_Y);
   ck(pet.bdayMonth == 1 && pet.bdayDay == 1, "the first + starts it at 1/1");
