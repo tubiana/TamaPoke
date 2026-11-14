@@ -101,7 +101,7 @@ int main(){
   btlMenu = 2;                       // the POKEMON list
   uint8_t was = btlSquadAt;
   sent = 0;
-  battleTap(69 + 168 + 10, 286 + 10);   // cell 1 of the switch grid
+  battleTap(313, 119);                 // cell 1 of the team screen
   ck(btlSquadAt==was, "the guest does not switch locally");
   ck(sent==1 && lastPkt[0]==LM_ACT, "it sends the request instead");
   ck(LINK_ACT_IS_SWITCH(lastPkt[3]) && LINK_ACT_SLOT(lastPkt[3])==1,

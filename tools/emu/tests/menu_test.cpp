@@ -32,7 +32,7 @@ void lanTap(int16_t x, int16_t y);
 extern Pet pet;
 extern Link lan;
 extern bool menuOpen, galleryOpen, exploreOpen, gymOpen, gymPick, lanOpen, tradeOpen,
-            partyOpen, cardOpen, clockOpen, pickOpen, lanForTrade;
+            partyOpen, cardOpen, clockOpen, pickOpen, lanForTrade, boxOpen;
 extern uint8_t menuPage, cardPage, choiceKind;
 static int bad=0;
 static void ck(bool ok,const char*w){printf("%s  %s\n",ok?"PASS":"FAIL",w); if(!ok)bad++;}
@@ -49,7 +49,7 @@ static bool centreOf(int item, int16_t &cx, int16_t &cy) {
 }
 static void closeAll() {
   menuOpen = galleryOpen = exploreOpen = gymOpen = gymPick = lanOpen = tradeOpen = false;
-  partyOpen = cardOpen = clockOpen = pickOpen = lanForTrade = false;
+  partyOpen = cardOpen = clockOpen = pickOpen = lanForTrade = boxOpen = false;
   choiceKind = 0;
 }
 static void openMenu(uint8_t page) { closeAll(); onTap(233, 60); menuPage = page; }
@@ -85,7 +85,6 @@ int main(){
   while (pet.hasLearnOffer()) pet.declineLearn();
   pet.ageMinutes = 60UL * 20;
   for (int i=0;i<PARTY_SLOTS;i++) party.releaseAt(i);
-  for (int i=0;i<BOX_SLOTS;i++) party.boxReleaseAt(i);
   party.add(mk(25, 20));
 
   // --- the name band opens it, on the first page
@@ -96,7 +95,7 @@ int main(){
 
   // --- geometry: each tile and CLOSE on the glass, nothing overlapping
   bool onGlass = true;
-  for (uint8_t p = 0; p < 2; p++) {
+  for (uint8_t p = 0; p < 3; p++) {
     menuPage = p;
     for (int y = 0; y < 466; y++) for (int x = 0; x < 466; x++) {
       int h = menuHit(x, y);
@@ -112,29 +111,33 @@ int main(){
   openMenu(0); ck(tapItem(1) && exploreOpen && !menuOpen, "EXPLORE opens the map");
   openMenu(0); ck(tapItem(2) && gymOpen && gymPick && !menuOpen, "BATTLE opens the gym chooser");
   openMenu(0); ck(tapItem(3) && lanOpen && lanForTrade && !menuOpen, "TRADE opens pairing, marked as a trade");
-  // --- page 2 tiles
-  openMenu(1); ck(tapItem(4) && partyOpen && !menuOpen, "TEAM opens the party");
-  openMenu(1); ck(tapItem(5) && cardOpen && cardPage == 1 && !menuOpen, "STATS opens the stats page");
-  openMenu(1); ck(tapItem(6) && clockOpen && !menuOpen, "SETTINGS opens the settings");
-  openMenu(1); ck(tapItem(7) && choiceKind == 3 && !menuOpen, "FAREWELL asks to say goodbye");
+  // --- page 2 tiles: the team and, right after it, the boxes
+  openMenu(1); ck(tapItem(4) && partyOpen && !boxOpen && !menuOpen, "TEAM opens the party");
+  openMenu(1); ck(tapItem(5) && boxOpen && !menuOpen, "BOXES opens the boxes");
+  openMenu(1); ck(tapItem(6) && cardOpen && cardPage == 1 && !menuOpen, "STATS opens the stats page");
+  openMenu(1); ck(tapItem(7) && clockOpen && !menuOpen, "SETTINGS opens the settings");
+  // --- page 3: the goodbye, on its own
+  openMenu(2); ck(tapItem(8) && choiceKind == 3 && !menuOpen, "FAREWELL asks to say goodbye");
   openMenu(0); ck(menuHit(305, 143) == 1, "page 1 draws EXPLORE top-right (the manual points there)");
-  openMenu(1); ck(menuHit(305, 143) == 5, "page 2 draws STATS top-right");
+  openMenu(1); ck(menuHit(305, 143) == 5, "page 2 draws BOXES top-right, beside TEAM");
 
   // --- swiping pages and never closes
   openMenu(0);
   onSwipe(-1);
   ck(menuOpen && menuPage == 1, "a swipe left turns to page 2");
   onSwipe(-1);
-  ck(menuOpen && menuPage == 1, "another swipe left, off the end: still open, still page 2");
-  onSwipe(+1);
-  ck(menuOpen && menuPage == 0, "a swipe right comes back to page 1");
+  ck(menuOpen && menuPage == 2, "and again to page 3");
+  onSwipe(-1);
+  ck(menuOpen && menuPage == 2, "another swipe left, off the end: still open, still page 3");
+  onSwipe(+1); onSwipe(+1);
+  ck(menuOpen && menuPage == 0, "swipes right come back to page 1");
   onSwipe(+1);
   ck(menuOpen && menuPage == 0, "off the front: still open");
 
   // --- the dots
   openMenu(0);
   onTap(300, 324);
-  ck(menuOpen && menuPage == 1, "tapping the right-hand dot turns to page 2");
+  ck(menuOpen && menuPage == 2, "tapping the right-hand dot turns to the last page");
   onTap(166, 324);
   ck(menuOpen && menuPage == 0, "tapping the left-hand dot comes back");
 

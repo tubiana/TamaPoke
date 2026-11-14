@@ -144,7 +144,8 @@ int main(){
     if (pty.slots[i].moves[0] || pty.slots[i].moves[3]) freshMoves = false;
   ck(freshMoves, "the moveset a pre-moves save never had comes up empty, not garbage");
   ck(pty.slots[1].shiny, "a banked shiny is still shiny");
-  ck(pty.boxCount() == 0, "the box, which did not exist then, comes up empty");
+  { int n = 0; for (auto &b : pty.box) n += !b.empty();
+    ck(n == 0, "the old box, which did not exist then, comes up empty"); }
 
   // the new settings take their defaults rather than garbage
   ck(pet.region < REGION_COUNT, "the egg region defaults sanely");

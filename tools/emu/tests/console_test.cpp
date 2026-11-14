@@ -11,7 +11,7 @@
 #include "pet.h"
 #include "party.h"
 #include "save.h"
-#include "dexbox.h"
+#include "pcbox.h"
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -71,10 +71,12 @@ int main(){
   for (int i=0;i<3;i++){ PartyMon m; m.dex=100+i; m.level=44+i;
     m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=17; party.replaceAt(i,m); }
   pet.renameTrainer("ASH");        // persists everything above
-  // two catches in the Pokedex box: a file, not NVS, and backed up all the same
-  dexBoxWipe();
-  { PartyMon a; makeMon(25, 31, true, a); strcpy(a.nick, "SPARKY"); dexBoxPut(a);
-    PartyMon b; makeMon(133, 12, false, b); dexBoxPut(b); }
+  // three catches in the boxes: a file, not NVS, and backed up all the same --
+  // two of one species, and NOT in dex order, so the order has to come back too
+  pcWipe();
+  { PartyMon a; makeMon(133, 12, false, a); pcAdd(a);
+    PartyMon b; makeMon(25, 31, true, b); strcpy(b.nick, "SPARKY"); pcAdd(b);
+    PartyMon c; makeMon(133, 20, false, c); pcAdd(c); }
 
   std::string out = runConsole({"EXPORT"});
   ck(out.find("# TamaPoke save") != std::string::npos, "EXPORT says what it is");
@@ -95,7 +97,7 @@ int main(){
 
   // --- wipe, then paste the block straight back
   pet.factoryReset();
-  dexBoxWipe();                    // WIPE takes the box too
+  pcWipe();                        // WIPE takes the boxes too
   Pet gone; gone.begin();
   ck(strcmp(gone.trainerName,"ASH") != 0, "the wipe really took the save");
 
@@ -114,10 +116,11 @@ int main(){
   ck(q2.count()==3 && q2.slots[1].dex==101 && q2.slots[1].level==45,
      "and the party");
   {
-    PartyMon a, b;
-    ck(dexBoxCount() == 2 && dexBoxGet(25, a) && dexBoxGet(133, b),
-       "and the Pokedex box, both catches");
-    ck(a.level == 31 && a.shiny && !strcmp(a.nick, "SPARKY") && b.level == 12,
+    PartyMon a, b, c;
+    ck(pcCount() == 3 && pcGet(0, a) && pcGet(1, b) && pcGet(2, c),
+       "and the boxes, all three catches");
+    ck(a.dex == 133 && b.dex == 25 && c.dex == 133, "in the order they arrived, the duplicate kept");
+    ck(b.level == 31 && b.shiny && !strcmp(b.nick, "SPARKY") && a.level == 12 && c.level == 20,
        "with their levels, shininess and names");
   }
 
@@ -128,12 +131,12 @@ int main(){
       if (ln.rfind("IMPORTBOX ", 0) == 0 && ln != "IMPORTBOX START") {
         size_t k = ln.size() / 2; ln[k] = (ln[k] == 'A') ? 'B' : 'A'; break;
       }
-    dexBoxWipe();
+    pcWipe();
     gRestarted = false;
     std::string rb = runConsole(mangled);
     ck(rb.find("IMPORTBOX BAD") != std::string::npos && rb.find("IMPORT REJECTED") != std::string::npos,
        "a damaged box line is caught, and the restore refused");
-    ck(!gRestarted && dexBoxCount() == 0, "with nothing applied");
+    ck(!gRestarted && pcCount() == 0, "with nothing applied");
     runConsole(back);                // put it right for what follows
   }
 

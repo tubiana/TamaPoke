@@ -6,6 +6,7 @@
 #include "Preferences.h"
 #include "pet.h"
 #include "party.h"
+#include "pcbox.h"
 #include "i18n.h"
 #include <cstdio>
 #include <cstring>
@@ -45,6 +46,7 @@ int main(){
   if (pet.isEgg()) pet.dbgHatchAs(4,false);
   while (pet.hasLearnOffer()) pet.declineLearn();
   for (int i=0;i<PARTY_SLOTS;i++) party.releaseAt(i);
+  pcWipe();
   pet.setClock(noonOf(D_2026_07_14));
 
   // ---- OPTIONS: set the birthday to 14 July by taps alone ----
@@ -64,8 +66,9 @@ int main(){
   ck(flushes(), "the main screen with the present flushes");
   int cries = g_emuCries;
   onTap(PRESENT_CX, PRESENT_CY);
-  ck(!party.slots[0].empty() && party.slots[0].shiny, "tapping the present puts a shiny in the party");
-  ck(partyBannerUntil > 0 && !strcmp(partyBannerName, dexName(party.slots[0].dex)),
+  PartyMon gift; pcGet(0, gift);
+  ck(pcCount() == 1 && gift.shiny && party.slots[0].empty(), "tapping the present puts a shiny in the boxes");
+  ck(partyBannerUntil > 0 && !strcmp(partyBannerName, dexName(gift.dex)),
      "...announced by name");
   ck(g_emuCries == cries + 1, "...with its cry");
   ck(!pet.giftReady() && !strcmp(statusMsg(), T(S_HAPPY_BDAY)), "then it just says happy birthday");

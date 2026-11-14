@@ -14,6 +14,7 @@
 #include "party.h"
 #include "battle.h"
 #include "link.h"
+#include "pcbox.h"
 #include <cstdio>
 #include <cstring>
 uint32_t g_seed=8; FakeSerial Serial; FakeESP ESP; FakeWire Wire;
@@ -41,7 +42,8 @@ static void step(int n = 1){ for (int i = 0; i < n; i++) { T += 500; lan.tick(T)
   if (P.tArrived) { P.tArrived = false; }                       // the peer stores ours
   if (P.tPhase == 1 && P.tPeerDone) P.tPhase = 2; } }           // ...and gives theirs
 
-static int countDex(int16_t d){ int n=0; for (auto &m : party.slots) n += m.dex==d; for (auto &m : party.box) n += m.dex==d; return n; }
+static int countDex(int16_t d){ int n=0; for (auto &m : party.slots) n += m.dex==d;
+  for (uint16_t i=0;i<pcCount();i++){ PartyMon m; pcGet(i,m); n += m.dex==d; } return n; }
 static PartyMon mk(int16_t d, uint16_t lv){ PartyMon m; makeMon(d, lv, false, m); return m; }
 
 int main(){
@@ -50,7 +52,7 @@ int main(){
   if (pet.awaitingStarter()) pet.chooseStarter(4);
   if (pet.isEgg()) pet.dbgHatchAs(4,false);
   for (int i=0;i<PARTY_SLOTS;i++) party.releaseAt(i);
-  for (int i=0;i<BOX_SLOTS;i++) party.boxReleaseAt(i);
+  pcWipe();
   party.add(mk(25, 20));       // PIKACHU, party slot 0: what we will offer
   party.add(mk(1, 15));
 
@@ -98,21 +100,20 @@ int main(){
   onSwipeV(1);
   ck(!tradeOpen && lanOpen && lan.ready(), "a swipe out of the trade leaves both devices still paired");
 
-  // a full party and box cannot take anything in
+  // full boxes cannot take anything in
   for (int i = 0; i < PARTY_SLOTS; i++) if (party.slots[i].empty()) party.replaceAt(i, mk(16, 5));
-  for (int i = 0; i < BOX_SLOTS; i++) party.boxAdd(mk(19, 5));
+  { PartyMon f = mk(19, 5); while (pcCount() < PC_MAX && pcAdd(f)) {} }
   lanTap(233, 318);
   render();
   ck(tradeOpen && tradePicking && tradePage == 0, "TRADE again");
   onSwipe(-1);
-  ck(tradeOpen && tradePage == 1, "the picker pages on a swipe instead of closing");
-  onSwipe(1);
+  ck(tradeOpen && tradePage == 0, "the team fits one page, and a swipe does not close the picker");
   lanTap(73 + 50, 104 + 50);
   P.tradeReset(); P.tradeOffer(mk(7, 10));
   step(2);
   lanTap(320, 323);                                   // OK, with no room
   step(2);
-  ck(!lan.tIAccepted && countDex(7) == 0, "with the party and box full, OK does nothing");
+  ck(!lan.tIAccepted && countDex(7) == 0, "with the boxes full, OK does nothing");
 
   printf(bad ? "\n%d FAILED\n" : "\nALL PASS\n", bad);
   return bad ? 1 : 0;

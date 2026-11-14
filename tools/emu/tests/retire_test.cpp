@@ -39,7 +39,7 @@ static void finish(Pet &p, Party &q){
   gNow += CEREMONY_MS + 1000;
   p.update(gNow);
   if (p.endedKind != CER_NONE) {
-    if (!q.add(p.endedMon)) q.boxAdd(p.endedMon);
+    q.add(p.endedMon);          // a full team is the team screen's business
     p.endedKind = CER_NONE;
   }
 }

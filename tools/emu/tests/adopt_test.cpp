@@ -1,17 +1,17 @@
 // Adopting a caught creature in place of the waiting egg -- through the real
-// Pokedex page.
+// boxes screen, from the creature's sheet.
 //
 // What is being held: the ADOPT button exists only while an egg waits; one tap
 // only arms it, since giving up the egg cannot be undone; the second raises the
 // caught individual (its species, IVs, name) at level 1 as a LIVING creature --
 // not the frozen companion a revive makes -- so it ages and evolves; it leaves
-// the Pokedex box; and it survives a reload.
+// the boxes; and it survives a reload.
 #include "Arduino.h"
 #include "Arduino_GFX_Library.h"
 #include "Preferences.h"
 #include "pet.h"
 #include "party.h"
-#include "dexbox.h"
+#include "pcbox.h"
 #include <cstdio>
 #include <cstring>
 uint32_t g_seed=2024; FakeSerial Serial; FakeESP ESP; FakeWire Wire;
@@ -20,42 +20,48 @@ void FakeESP::restart(){exit(0);}
 int FakeSerial::available(){return 0;}
 String FakeSerial::readStringUntil(char){return String("");}
 void setup(); void render();
-void galleryTap(int16_t x, int16_t y);
-bool dexPageCanAdopt(int16_t dex);
+void boxTap(int16_t x, int16_t y);
+void boxOpenFrom(bool menu);
+void sheetBtnRect(uint8_t n, uint8_t i, int *x, int *w);
+bool sheetBtnLive(bool fromBox, uint8_t i, const char **lbl);
 extern Pet pet;
-extern bool galleryOpen;
-extern int16_t galleryDetail;
+extern bool boxOpen;
+extern uint16_t boxDetail;
 
 static int bad=0;
 static void ck(bool ok,const char*w){printf("%s  %s\n",ok?"PASS":"FAIL",w); if(!ok)bad++;}
 
 static const int16_t DEX = 4;          // CHARMANDER: evolves at 16
-static void openPage(){ galleryOpen = true; galleryDetail = DEX; render(); }
-static void tapAdopt(){ galleryTap(233 + 80, 344 + 23); render(); }
+static const uint8_t ADOPT = 1;       // the box sheet's second button
+static void openPage(){ boxOpenFrom(true); boxDetail = 1; render(); }
+static void tapAdopt(){
+  int x, w; sheetBtnRect(2, ADOPT, &x, &w);
+  boxTap(x + w / 2, 336 + 24); render();
+}
 
 int main(){
   setup();
-  dexBoxWipe();
+  pcWipe();
   pet.dbgHatchAs(1, false);            // someone alive, so the starter screen is past
   PartyMon caught; makeMon(DEX, 24, false, caught);
   caught.ivAtk = 29; caught.ivDef = 3; caught.ivSpe = 17; caught.ivHp = 8;
   strcpy(caught.nick, "EMBER");
-  ck(dexBoxPut(caught), "a caught CHARMANDER sits in the Pokedex box");
+  ck(pcAdd(caught), "a caught CHARMANDER sits in the boxes");
   pet.registerCaught(DEX, false);
 
   // --- no egg waiting: nothing to adopt into
   openPage();
-  ck(!dexPageCanAdopt(DEX), "with a creature alive there is no ADOPT");
+  ck(!sheetBtnLive(true, ADOPT, nullptr), "with a creature alive ADOPT is greyed");
   tapAdopt(); tapAdopt();
-  ck(pet.speciesId == 1 && dexBoxHas(DEX), "and tapping where it would be changes nothing");
+  ck(pet.speciesId == 1 && pcHas(DEX), "and tapping it changes nothing");
 
   // --- an egg waits
   pet.newEgg();
   ck(pet.isEgg() && !pet.awaitingStarter(), "an egg is waiting");
   openPage();
-  ck(dexPageCanAdopt(DEX), "now the page offers ADOPT");
+  ck(sheetBtnLive(true, ADOPT, nullptr), "now the sheet offers ADOPT");
   tapAdopt();
-  ck(pet.isEgg() && dexBoxHas(DEX), "the first tap only arms it");
+  ck(pet.isEgg() && pcHas(DEX), "the first tap only arms it");
   tapAdopt();
   ck(!pet.isEgg() && pet.speciesId == DEX, "the second raises the CHARMANDER instead of the egg");
   ck(pet.level() == 1, "at level 1, whatever level it was caught at");
@@ -63,8 +69,8 @@ int main(){
      "the very individual that was caught (its IVs)");
   ck(!strcmp(pet.nick, "EMBER"), "with its name");
   ck(!pet.frozen, "and ALIVE -- not the frozen companion a revive makes");
-  ck(!dexBoxHas(DEX), "it has left the Pokedex box");
-  ck(!galleryOpen, "and the screen goes back to it");
+  ck(!pcHas(DEX) && pcCount() == 0, "it has left the boxes");
+  ck(!boxOpen, "and the screen goes back to it");
 
   // --- it grows up like anything that hatched
   pet.ageMinutes = (uint32_t)(DEX_TBL[DEX].evolveLevel + 1) * MINUTES_PER_LEVEL;

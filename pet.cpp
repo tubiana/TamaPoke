@@ -7,6 +7,7 @@
 #include "i18n.h"
 #include "dex_names.h"
 #include "move_names.h"
+#include "pcbox.h"     // the birthday present goes to the boxes
 
 const char *dexName(int16_t dex) {
   if (dex < 1 || dex > DEX_COUNT) return DEX_TBL[0].name;
@@ -412,7 +413,7 @@ bool Pet::giftReady() const {
 // begin()'d, so it cannot save over the player's creature.
 int16_t Pet::openGift() {
   if (!giftReady()) return 0;
-  if (party.count() >= PARTY_SLOTS && party.boxCount() >= BOX_SLOTS) return 0;
+  if (!pcReady() || pcCount() >= PC_MAX) return 0;
   int16_t pick = 0;
   for (int pass = 0; pass < 2 && !pick; pass++) {
     uint16_t seen = 0;          // reservoir sampling: uniform, no candidate array
@@ -429,7 +430,7 @@ int16_t Pet::openGift() {
   if (lvl < GIFT_MIN_LEVEL) lvl = GIFT_MIN_LEVEL;
   PartyMon m;
   if (!makeMon(pick, lvl, true, m)) return 0;
-  if (!party.add(m) && !party.boxAdd(m)) return 0;
+  if (!pcAdd(m)) return 0;
   dexReg[(pick - 1) >> 3] |= (1 << ((pick - 1) & 7));
   dexShinyReg[(pick - 1) >> 3] |= (1 << ((pick - 1) & 7));
   giftYear = calFromDays(today()).year;

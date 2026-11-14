@@ -109,50 +109,10 @@ void Party::save() {
   prefs.putBytes("pxp", xp, sizeof(xp));
 }
 
-void Party::boxSave() {
-  prefs.putBytes("box", box, sizeof(box));
-  prefs.putBytes("bxp", boxXp, sizeof(boxXp));
-}
-
-uint8_t Party::boxCount() const {
-  uint8_t n = 0;
-  for (auto &s : box)
-    if (!s.empty()) n++;
-  return n;
-}
-
-int Party::boxFirstFree() const {
-  for (int i = 0; i < BOX_SLOTS; i++)
-    if (box[i].empty()) return i;
-  return -1;
-}
-
-bool Party::boxAdd(const PartyMon &m) {
-  int i = boxFirstFree();
-  if (i < 0) return false;
-  box[i] = m;
-  boxXp[i] = 0;
-  boxSave();
-  return true;
-}
-
-void Party::boxReleaseAt(uint8_t i) {
-  if (i >= BOX_SLOTS) return;
-  box[i] = PartyMon();
-  boxXp[i] = 0;
-  boxSave();
-}
-
-void Party::swapPartyBox(uint8_t partyIdx, uint8_t boxIdx) {
-  if (partyIdx >= PARTY_SLOTS || boxIdx >= BOX_SLOTS) return;
-  PartyMon t = slots[partyIdx];
-  slots[partyIdx] = box[boxIdx];
-  box[boxIdx] = t;
-  uint16_t tx = xp[partyIdx];          // the experience travels with its creature
-  xp[partyIdx] = boxXp[boxIdx];
-  boxXp[boxIdx] = tx;
-  save();
-  boxSave();
+void Party::boxClear() {
+  for (int i = 0; i < BOX_SLOTS; i++) { box[i] = PartyMon(); boxXp[i] = 0; }
+  prefs.remove("box");
+  prefs.remove("bxp");
 }
 
 uint8_t Party::count() const {

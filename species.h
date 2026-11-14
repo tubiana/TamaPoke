@@ -579,6 +579,24 @@ static const char* const SPR_MENU_TEAM[16] = {  // 16x16 -- a ball
   "....kkksskkk....",
   ".......kk.......",
 };
+static const char* const SPR_MENU_BOX[16] = {  // 16x16 -- a storage box, a ball on its lid
+  "................",
+  "................",
+  "..kkkkkkkkkkkk..",
+  ".kcccccrrcccccck",
+  ".kcccckrrkccccck",
+  ".kkkkkkwwkkkkkkk",
+  "..kCCCCkkCCCCk..",
+  "..kCcccccccCck..",
+  "..kCckkkkkcCck..",
+  "..kCcccccccCck..",
+  "..kCcccccccCck..",
+  "..kCcccccccCck..",
+  "..kCCCCCCCCCck..",
+  "..kkkkkkkkkkkk..",
+  "................",
+  "................",
+};
 static const char* const SPR_MENU_STATS[16] = {  // 16x16 -- three bars
   "................",
   "................",

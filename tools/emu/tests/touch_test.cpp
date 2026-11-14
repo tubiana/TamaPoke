@@ -175,8 +175,8 @@ int main(int argc, char **argv) {
 
   click(233, 60);                        // name/status band opens the menu
   if (!menuOpen) { printf("FAIL: name band did not open the menu\n"); return 1; }
-  click(300, 324);                       // the right-hand page dot: page 2
-  click(305, 143);                       // page 2, top-right tile == STATS
+  click(233, 324);                       // the middle page dot: page 2
+  click(156, 259);                       // page 2, bottom-left tile == STATS
   if (!cardOpen || cardPage != 1) {
     printf("FAIL: STATS tile ->cardOpen=%d cardPage=%d (want 1,1)\n",
            (int)cardOpen, (int)cardPage);
@@ -350,12 +350,12 @@ int main(int argc, char **argv) {
 
   uint8_t was = btlSquadAt;
   uint16_t swFoeHp0 = btlFoe.hp;
-  click(69 + 40, 286 + 22);             // slot 0 = the one already out: inert
+  click(153, 119);                      // slot 0 = the one already out: inert
   if (btlSquadAt != was) { printf("FAIL: switching to the active creature was allowed\n"); return 1; }
   printf("PASS: you cannot switch to the one already out\n");
 
   btlMenu = 2;
-  click(69 + 168 + 40, 286 + 22);       // slot 1
+  click(313, 119);                      // slot 1 on the team screen
   if (btlSquadAt == was) { printf("FAIL: the switch did not happen\n"); return 1; }
   printf("PASS: switching brings on another creature (slot %u -> %u)\n", was, btlSquadAt);
   bool costTurn = (btlYou.hp < btlYou.maxHp) || (btlFoe.hp == swFoeHp0);

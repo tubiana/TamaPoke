@@ -45,9 +45,13 @@ int main(){
     m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=20+i; m.shiny=(i==2);
     snprintf(m.nick,sizeof(m.nick),"P%d",i);
     m.moves[0]=1+i; m.moves[1]=9; party.replaceAt(i,m); }
-  for (int i=0;i<BOX_SLOTS;i++){ PartyMon m; m.dex=1+i*3; m.level=10+i;
-    m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=11; party.box[i]=m; }
-  party.boxSave();
+  // the OLD 18-slot box (before 3.35), as an older build left it: a backup made
+  // then must still carry it, so the boot after the restore can migrate it
+  { PartyMon box[BOX_SLOTS];
+    for (int i=0;i<BOX_SLOTS;i++){ box[i].dex=1+i*3; box[i].level=10+i;
+      box[i].ivAtk=box[i].ivDef=box[i].ivSpe=box[i].ivHp=11; }
+    Preferences old; old.begin("tamapoke", false);
+    old.putBytes("box", box, sizeof(box)); old.end(); }
   // renameTrainer() persists, and save() writes every field -- so this is also
   // what commits everything set above. save() itself is private on purpose.
   pet.renameTrainer("DYLAN");
@@ -138,7 +142,8 @@ int main(){
   }
   ck(party_ok, "with every level, moveset and nickname");
   ck(q2.slots[2].shiny, "and a banked shiny is still shiny");
-  ck(q2.boxCount()==BOX_SLOTS, "the box comes back full");
+  { int n = 0; for (auto &b : q2.box) n += !b.empty();
+    ck(n==BOX_SLOTS, "an old box comes back full, for the boot to migrate"); }
   ck(q2.box[7].dex==1+7*3 && q2.box[7].level==17, "with the right creatures in it");
 
   // --- a restore must not leave anything of whatever was there before

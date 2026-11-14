@@ -8,6 +8,7 @@
 #include "pet.h"
 #include "moves.h"
 #include "party.h"
+#include "pcbox.h"
 #include <cstdio>
 uint32_t g_seed=2; FakeSerial Serial; FakeESP ESP; FakeWire Wire;
 volatile int g_touchX=0,g_touchY=0; volatile bool g_touchDown=false;
@@ -25,7 +26,8 @@ extern int galleryPage; extern bool galleryDirty; extern uint8_t galleryDetail;
 extern uint8_t galleryRegion;
 extern uint8_t gymRegion;
 extern bool gymPick, galleryPick;
-extern uint8_t movePickSlot, movePickParty, boxSel, boxSwapFrom;
+extern uint8_t movePickSlot, movePickParty, galType;
+int galCount(); int16_t galAt(int k); int galPages(); int gridPerPage();
 extern uint16_t squadMask;
 extern uint8_t pickTrainer; extern bool pickHard;
 void pickDefault(uint8_t);
@@ -47,7 +49,7 @@ static void clearAll(){
   cardOpen=galleryOpen=clockOpen=kbOpen=menuOpen=partyOpen=partyPick=false;
   trainOpen=movePickOpen=battleOpen=gymOpen=playerOpen=boxOpen=pickOpen=false;
   lanOpen=tradeOpen=false;
-  partyDetail=0; boxSel=boxSwapFrom=0;
+  partyDetail=0;
 }
 // swipe left; the page must advance and the screen must stay open
 static void check(const char *name, bool *open, uint8_t *page){
@@ -68,21 +70,26 @@ int main(){
   while (pet.hasLearnOffer()) pet.declineLearn();
   for (int i=0;i<PARTY_SLOTS;i++){ PartyMon m; m.dex=9+i; m.level=40;
     m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=20; party.replaceAt(i,m); }
-  for (int i=0;i<BOX_SLOTS;i++){ PartyMon m; m.dex=1+i; m.level=20;
-    m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=20; party.box[i]=m; }
+  pcWipe();
+  for (int i=0;i<30;i++){ PartyMon m; m.dex=1+i; m.level=20;   // more than a page
+    m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=20; pcAdd(m); }
 
   clearAll(); cardOpen=true;                      check("card",     &cardOpen,     &cardPage);
   clearAll(); gymOpen=true; gymPick=false;        check("gyms",     &gymOpen,      &gymPage);
   clearAll(); playerOpen=true;                    check("player",   &playerOpen,   &playerPage);
   clearAll(); clockOpen=true;                     check("settings", &clockOpen,    &settingsPage);
-  clearAll(); partyOpen=true; boxOpen=true;       check("box",      &boxOpen,      &boxPage);
+  clearAll(); boxOpen=true;                       check("boxes",    &boxOpen,      &boxPage);
   clearAll(); movePickOpen=true; movePickParty=0; movePickSlot=0;
                                                   check("movepick", &movePickOpen, &movePickPage);
   clearAll(); menuOpen=true;                      check("menu",     &menuOpen,     &menuPage);
   clearAll(); pickTrainer=7; pickHard=false; pickDefault(squadCap(7,false)); pickOpen=true;
                                                   check("teampick", &pickOpen,     &pickPage);
-  clearAll(); lanOpen=true; tradeOpen=true; tradePicking=true;
-                                                  check("trade",    &tradeOpen,    &tradePage);
+  // The trade picker offers the team only (3.35), so it is one page: a swipe
+  // must still leave it open rather than throw the player out of the trade.
+  clearAll(); lanOpen=true; tradeOpen=true; tradePicking=true; tradePage=0;
+  onSwipe(-1);
+  if (!tradeOpen || tradePage != 0) { printf("FAIL  trade      a swipe closed or overran the picker\n"); bad++; }
+  else printf("PASS  %-10s one page, and a swipe does not close it\n", "trade");
   // The Pokedex pages within ONE region and changes region on a vertical swipe.
   // Every species must be reachable: it was capped at 10 flat pages when the dex
   // was 151 long, which silently hid everything past 160 once it grew to 386.
@@ -98,12 +105,15 @@ int main(){
     for (int r = 0; r < regions; r++) {
       galleryRegion = (uint8_t)r;
       galleryPage = 0;
-      int lo = REGIONS[r].lo, hi = REGIONS[r].hi;
-      int pages = (hi - lo + 1 + 15) / 16;
+      galType = 0;
+      int pages = galPages(), per = gridPerPage(), n = galCount();
+      if (pages * per < n) { printf("FAIL  gallery    %s: %d pages of %d cannot show %d\n", REGIONS[r].name, pages, per, n); bad++; }
       for (int p = 0; p < pages; p++) {
-        for (int i = 0; i < 16; i++) {
-          int d = lo + p * 16 + i;
-          if (d <= hi && d <= DEX_COUNT) seen[d] = true;
+        for (int i = 0; i < per; i++) {
+          if (galleryPage * per + i < n) {
+            int16_t d = galAt(galleryPage * per + i);   // what this page draws
+            if (d >= 1 && d <= DEX_COUNT) seen[d] = true;
+          }
         }
         onSwipe(-1);
       }
@@ -117,6 +127,20 @@ int main(){
     for (int d = 1; d <= DEX_COUNT; d++) if (!seen[d]) missing++;
     if (missing) { printf("FAIL  gallery    %d species are unreachable\n", missing); bad++; }
     else printf("PASS  %-10s every one of the %d species is reachable\n", "gallery", DEX_COUNT);
+    // the type filter: every FIRE species of Kanto, and nothing else, a page at a time
+    {
+      galleryRegion = 0; galType = 1 + 1;    // T_FIRE + 1
+      int n = galCount(), shown = 0, wrong = 0;
+      for (int k = 0; k < n; k++) {
+        int16_t d = galAt(k);
+        if (DEX_TBL[d].type1 == 1 || DEX_TBL[d].type2 == 1) shown++; else wrong++;
+      }
+      int fire = 0;
+      for (int d = REGIONS[0].lo; d <= REGIONS[0].hi; d++) fire += DEX_TBL[d].type1 == 1 || DEX_TBL[d].type2 == 1;
+      if (wrong || shown != fire || fire == 0) { printf("FAIL  gallery    the FIRE filter shows %d of %d, %d wrong\n", shown, fire, wrong); bad++; }
+      else printf("PASS  %-10s the type filter shows exactly Kanto's %d FIRE species\n", "gallery", fire);
+      galType = 0;
+    }
     // and a vertical swipe really does move between regions
     galleryRegion = 0; galleryDetail = 0;
     onSwipeV(1);

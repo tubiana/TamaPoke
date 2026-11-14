@@ -44,6 +44,7 @@ public:
     _started = false;
   }
   void clear() { if (ok()) kv.clear(); }
+  bool remove(const char *k) { return ok() && kv.erase(k) != 0; }
   bool isKey(const char *k) { return ok() && kv.count(k) != 0; }
 
   template <typename T> void putT(const char *k, T v) {

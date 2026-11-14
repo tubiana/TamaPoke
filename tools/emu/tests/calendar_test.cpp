@@ -7,6 +7,7 @@
 #include "Preferences.h"
 #include "pet.h"
 #include "party.h"
+#include "pcbox.h"
 #include <cstdio>
 uint32_t g_seed=1031; FakeSerial Serial; FakeESP ESP; FakeWire Wire;
 volatile int g_touchX=0,g_touchY=0; volatile bool g_touchDown=false; bool wasPressed=false;
@@ -129,7 +130,7 @@ int main(){
   {
     Pet p; p.begin();
     for (int i=0;i<PARTY_SLOTS;i++) party.releaseAt(i);
-    for (int i=0;i<BOX_SLOTS;i++) party.boxReleaseAt(i);
+    pcWipe();
     p.dbgHatchAs(4,false);
     p.ageMinutes = 60UL * 29;          // level 30
     p.lastSeenEpoch = noon(D_2026_10_31);
@@ -137,8 +138,9 @@ int main(){
     p.setBirthday(10, 31);
     ck(p.eventToday() == EV_BIRTHDAY && p.giftReady(), "on the birthday a present waits");
     int16_t g = p.openGift();
-    const PartyMon &m = party.slots[0];
-    ck(g > 0 && m.dex == g && m.shiny && m.level == p.level(), "opening it puts a shiny of the creature's level in the party");
+    PartyMon m; pcGet(0, m);
+    ck(g > 0 && pcCount() == 1 && m.dex == g && m.shiny && m.level == p.level(),
+       "opening it puts a shiny of the creature's level in the boxes");
     ck(DEX_TBL[g].rarity == R_COMUN || DEX_TBL[g].rarity == R_RARO, "a base form, never a legendary");
     ck(p.isRegistered(g) && p.isShinyRegistered(g), "it is in the Pokedex, shiny");
     ck(m.moves[0] != 0, "it arrives with moves, not as a blank");
@@ -147,12 +149,12 @@ int main(){
     ck(!p.giftReady() && p.openGift() == 0, "not later the same day either");
     p.lastSeenEpoch = noon(D_2027_10_31);
     ck(p.giftReady(), "a year later there is a new one");
-    // full party and box: the present waits instead of vanishing
-    for (int i=0;i<PARTY_SLOTS;i++){ PartyMon f; f.dex=7; f.level=5; party.replaceAt(i,f); }
-    for (int i=0;i<BOX_SLOTS;i++){ PartyMon f; f.dex=7; f.level=5; party.box[i]=f; }
+    // full boxes: the present waits instead of vanishing
+    { PartyMon f; f.dex=7; f.level=5; while (pcCount() < PC_MAX && pcAdd(f)) {} }
     ck(p.openGift() == 0 && p.giftReady(), "with no room it stays wrapped for later");
-    party.releaseAt(2);
-    ck(p.openGift() > 0 && !party.slots[2].empty(), "...and opens once a slot is free");
+    pcTake(2);
+    ck(p.openGift() > 0 && pcCount() == PC_MAX, "...and opens once there is room");
+    pcWipe();
   }
   {
     // the choice prefers what the Pokedex is missing

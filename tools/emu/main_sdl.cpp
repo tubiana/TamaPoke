@@ -7,6 +7,7 @@
 #include "pet.h"
 #include "party.h"
 #include "battle.h"
+#include "pcbox.h"
 #include <chrono>
 #include <string>
 #include <deque>
@@ -161,7 +162,10 @@ void startLinkBattle();
 extern uint8_t playerPage;
 extern bool gymHard, pickOpen;
 extern uint8_t partyDetail;
-extern bool boxOpen; extern uint8_t boxSwapFrom;
+extern bool boxOpen; extern uint16_t boxDetail;
+extern uint8_t boxSort, boxType;
+extern uint8_t galType;
+void boxOpenFrom(bool menu);
 extern bool btlNewBadge; extern uint32_t btlWinUntil;
 extern uint8_t pickTrainer, pickPage;
 void pickDefault(uint8_t cap);
@@ -320,12 +324,32 @@ static int shotMode(const char *screen, const char *out, int lvl, int iv, int de
     static const int f[]={9,25,143,94,131,3};
     for(int i=0;i<6;i++){ PartyMon m; m.dex=f[i]; m.level=40+i*5;
       m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=25; party.replaceAt(i,m); }
-    static const int b[]={6,65,68,143,12,131,94,25};
-    for(int i=0;i<8;i++){ PartyMon m; m.dex=b[i]; m.level=30+i*4;
+    static const int b[]={6,65,68,143,12,131,94,25,1,4,7,150,133,59};
+    for(int i=0;i<14;i++){ PartyMon m; m.dex=b[i]; m.level=30+i*4;
       m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=20; m.shiny=(i==3);
-      party.box[i]=m; }
-    party.boxSave();
-    partyOpen=true; boxOpen=true; boxSwapFrom=1;
+      pcAdd(m); pet.registerCaught(b[i], m.shiny); }
+    boxOpenFrom(true);
+  }
+  else if (!strcmp(screen, "boxsort")) {   // by number, fire types only
+    static const int b[]={6,65,68,143,12,131,94,25,1,4,7,150,133,59,5,38};
+    for(int i=0;i<16;i++){ PartyMon m; m.dex=b[i]; m.level=30+i*2; pcAdd(m); }
+    boxOpenFrom(true); boxSort=1; boxType=2;
+  }
+  else if (!strcmp(screen, "boxsheet")) {
+    PartyMon m; m.dex=131; m.level=40; m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=20;
+    pcAdd(m); boxOpenFrom(true); boxDetail=1;
+  }
+  else if (!strcmp(screen, "dexicons")) {  // the Pokedex marks what you have
+    for (int d = 1; d <= 40; d++) pet.dbgHatchAs(d, false);
+    pet.dbgHatchAs(25, false);             // the one being raised
+    static const int b[]={1,4,7,12,16};
+    for(int i=0;i<5;i++){ PartyMon m; m.dex=b[i]; m.level=20; pcAdd(m); }
+    PartyMon t; t.dex=6; t.level=50; party.replaceAt(0,t);
+    galleryOpen = true; galleryDirty = true;
+  }
+  else if (!strcmp(screen, "dextype")) {
+    for (int d = 1; d <= 151; d++) pet.dbgHatchAs(d, false);
+    galleryOpen = true; galleryDirty = true; galType = 2;   // FIRE
   }
   else if (!strcmp(screen, "win")) {
     startTrainerBattle(2, true);

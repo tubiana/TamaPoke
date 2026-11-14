@@ -7,6 +7,7 @@
 #include "Preferences.h"
 #include "pet.h"
 #include "party.h"
+#include "pcbox.h"
 #include <cstdio>
 #include <cstring>
 uint32_t g_seed=7; FakeSerial Serial; FakeESP ESP; FakeWire Wire;
@@ -23,14 +24,14 @@ extern Pet pet;
 extern bool cardOpen, galleryOpen, clockOpen, kbOpen, menuOpen, partyOpen, partyPick;
 extern bool trainOpen, movePickOpen, battleOpen, gymOpen, playerOpen;
 extern uint8_t cardPage;
-extern uint8_t partyDetail, boxDetail;
+extern uint8_t partyDetail; extern uint16_t boxDetail, boxToTeam;
 extern bool boxOpen, releaseConfirm;
 extern Party party;
 extern uint8_t settingsPage;
 extern bool quizOpen;
 void openQuiz();
 void openExplore();
-extern bool exploreOpen, expKeepAsk;
+extern bool exploreOpen;
 extern int8_t expPlace;
 extern int16_t galleryDetail;
 void startBattle(int16_t dex, uint8_t lvl);
@@ -40,9 +41,9 @@ static void clearAll(){
   cardOpen=galleryOpen=clockOpen=kbOpen=menuOpen=partyOpen=partyPick=false;
   trainOpen=movePickOpen=battleOpen=gymOpen=playerOpen=false;
   boxOpen=releaseConfirm=false;
-  partyDetail=boxDetail=0;
+  partyDetail=0; boxDetail=boxToTeam=0;
   settingsPage=0; quizOpen=false;
-  exploreOpen=false; expKeepAsk=false; galleryDetail=0;
+  exploreOpen=false; galleryDetail=0;
 }
 static void check(const char *name){
   gfx->frameReady = false;
@@ -87,7 +88,7 @@ int main(){
   clearAll(); openExplore();               check("exploremap");
   for (int8_t p=0;p<8;p++){ clearAll(); openExplore(); expPlace=p;
     char n[16]; snprintf(n,sizeof(n),"place%d",p); check(n); }
-  clearAll(); openExplore(); expPlace=0; expKeepAsk=true; check("keepask");
+  clearAll(); openExplore(); expPlace=0;  check("explscene");
   clearAll(); galleryOpen=true; galleryDetail=6; check("dexpage");
   // The detail sheets and the release confirm drawn over them. A creature has to
   // be IN the slot: an empty one falls through to the grid, which flushes for a
@@ -95,12 +96,14 @@ int main(){
   {
     PartyMon m; m.dex=25; m.level=30; m.ivAtk=m.ivDef=m.ivSpe=m.ivHp=20;
     snprintf(m.nick,sizeof(m.nick),"PIKA");
-    party.slots[0]=m; party.box[0]=m; party.save(); party.boxSave();
+    party.slots[0]=m; party.save(); pcAdd(m);
   }
   clearAll(); partyOpen=true; partyDetail=1;                      check("partysheet");
   clearAll(); partyOpen=true; partyDetail=1; releaseConfirm=true;  check("partyconfirm");
-  clearAll(); partyOpen=true; boxOpen=true; boxDetail=1;           check("boxsheet");
-  clearAll(); partyOpen=true; boxOpen=true; boxDetail=1; releaseConfirm=true; check("boxconfirm");
+  clearAll(); boxOpen=true;                                       check("boxes");
+  clearAll(); boxOpen=true; boxDetail=1;                          check("boxsheet");
+  clearAll(); partyOpen=true; boxToTeam=1;                        check("boxtoteam");
+  clearAll(); partyOpen=true; partyPick=true;                     check("partypick");
 
   clearAll();                       crumbIs("main");
   clearAll(); trainOpen=true;       crumbIs("train");

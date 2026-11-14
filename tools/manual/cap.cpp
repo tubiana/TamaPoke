@@ -6,7 +6,7 @@
 #include "party.h"
 #include "i18n.h"
 #include "battle.h"
-#include "dexbox.h"
+#include "pcbox.h"
 
 #include <cstdio>
 #include <cstring>
@@ -34,7 +34,8 @@ extern uint8_t btlTrainGain, btlTrainWhich;
 void openExplore();
 bool startWildBattle(int16_t dex, uint8_t lvl, uint8_t place);
 void battleTap(int16_t x, int16_t y);
-extern bool exploreOpen, expKeepAsk, battleOpen, btlCaught;
+extern bool exploreOpen, battleOpen, btlCaught;
+void boxOpenFrom(bool menu); extern uint16_t boxDetail;
 extern int8_t expPlace; extern uint8_t expActive, btlMsgCount, partyDetail;
 extern uint32_t expActiveUntil, expNextAt, btlBallUntil, btlCatchEnd;
 extern Combatant btlFoe;
@@ -75,6 +76,7 @@ int main(int argc, char **argv){
   else if (!strcmp(sc,"sleep")) { pet.toggleLight(); settle(3); }
   else if (!strcmp(sc,"menu")) { menuOpen = true; menuPage = 0; }
   else if (!strcmp(sc,"menu2")) { menuOpen = true; menuPage = 1; }
+  else if (!strcmp(sc,"menu3")) { menuOpen = true; menuPage = 2; }
   else if (!strcmp(sc,"card0")) { cardOpen = true; cardPage = 0; settle(8); }
   else if (!strcmp(sc,"card1")) { cardOpen = true; cardPage = 1; }
   else if (!strcmp(sc,"card2")) { cardOpen = true; cardPage = 2; }
@@ -92,8 +94,8 @@ int main(int argc, char **argv){
   else if (!strcmp(sc,"fightmoves")) { startTrainerBattle(0, false); settle(2); btlMenu = 1; }
   else if (!strcmp(sc,"win")) { startTrainerBattle(0, false); btlNewBadge = true; btlWinUntil = millis() + 60000; pet.badges = 0x01; btlTrainGain = 4; btlTrainWhich = 0; }
   else if (!strcmp(sc,"dexpick")) { galleryOpen = true; galleryPick = true; }
-  else if (!strcmp(sc,"dex")) { galleryOpen = true; galleryPick = false; galleryRegion = 0; galleryPage = 0; galleryDirty = true; }
-  else if (!strcmp(sc,"dexdetail")) { galleryOpen = true; galleryPick = false; galleryRegion = 0; galleryPage = 0; galleryDirty = true; onTap(73 + 3*80 + 40, 84 + 40); settle(2); }
+  else if (!strcmp(sc,"dex")) { for (int d : {1, 7, 16}) { PartyMon o; makeMon(d, 9, false, o); pcAdd(o); } galleryOpen = true; galleryPick = false; galleryRegion = 0; galleryPage = 0; galleryDirty = true; }
+  else if (!strcmp(sc,"dexdetail")) { galleryOpen = true; galleryPick = false; galleryRegion = 0; galleryPage = 0; galleryDirty = true; onTap(73 + 3*80 + 40, 108 + 40); settle(2); }
   else if (!strcmp(sc,"quiz")) { galleryOpen = true; openQuiz(); }
   else if (!strcmp(sc,"quizright")) { galleryOpen = true; openQuiz(); for (int i=0;i<3;i++) if (quizOpt[i]==quizAns) onTap(233, 256 + i*52 + 23); }
   else if (!strcmp(sc,"quizdone")) { galleryOpen = true; for (int i=0;i<10;i++) pet.quizAnswered(i<8); openQuiz(); quizGainShown = 4; }
@@ -106,8 +108,10 @@ int main(int argc, char **argv){
   else if (!strcmp(sc,"explvolcano")) { scene(3); }
   else if (!strcmp(sc,"wild")) { wild(); }
   else if (!strcmp(sc,"caught")) { caught(); }
-  else if (!strcmp(sc,"keep")) { scene(2); makeMon(10, 14, false, expCatch); PartyMon o; makeMon(10, 9, false, o); dexBoxPut(o); expKeepAsk = true; }
-  else if (!strcmp(sc,"dexbox")) { PartyMon o; makeMon(10, 12, false, o); dexBoxPut(o); pet.registerCaught(10, false); for (int i = 0; i < PARTY_SLOTS; i++) party.releaseAt(i); pet.newEgg(); galleryOpen = true; galleryPick = false; galleryDetail = 10; settle(2); }
+  else if (!strcmp(sc,"boxes")) {   // the boxes, a dozen catches in the order they came
+    for (int d : {10, 16, 19, 7, 25, 129, 39, 10, 52, 54, 1, 133}) { PartyMon o; makeMon(d, 6 + d % 9, false, o); pcAdd(o); pet.registerCaught(d, false); }
+    boxOpenFrom(true); settle(2); }
+  else if (!strcmp(sc,"boxsheet")) { PartyMon o; makeMon(10, 12, false, o); pcAdd(o); pet.registerCaught(10, false); for (int i = 0; i < PARTY_SLOTS; i++) party.releaseAt(i); pet.newEgg(); boxOpenFrom(true); boxDetail = 1; settle(2); }
   else if (!strcmp(sc,"sheetxp")) { PartyMon m; makeMon(25, 9, false, m); party.replaceAt(0, m); party.xp[0] = 51; partyOpen = true; partyDetail = 1; }
   else if (!strcmp(sc,"birthday")) { pet.setBirthday(10, 31); pet.setClock(20757u*86400u + 15*3600u); settle(3); }
   render(); render();

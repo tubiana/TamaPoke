@@ -10,11 +10,9 @@
 // A runaway does not: it is the game's one punishing outcome, and letting a
 // neglected pet come back as a team member would take the sting out of it.
 #define PARTY_SLOTS 6
-// The box: storage beyond the six that fight. Deliberately a SEPARATE NVS key
-// rather than a bigger party blob -- growing that blob would change its stride
-// and the length-based migration in begin() cannot tell a stride change from a
-// slot-count change, so an existing party would be read back misaligned. A new
-// key is purely additive and cannot corrupt anything.
+// The old box: 18 slots under their own NVS key, superseded by the boxes
+// (pcbox.h) in 3.35. Still LOADED, so pcMigrate() can empty it into the boxes
+// on the first boot of a new build and an older backup can still be restored.
 #define BOX_SLOTS 18
 #define MOVE_SLOTS 4    // the same four every trainer gets in the real games
 
@@ -79,14 +77,7 @@ public:
   void replaceAt(uint8_t i, const PartyMon &m);
   void releaseAt(uint8_t i);    // free a slot again
   void save();
-  uint8_t boxCount() const;
-  int boxFirstFree() const;
-  bool boxAdd(const PartyMon &m);     // into the first free box slot
-  void boxReleaseAt(uint8_t i);
-  void boxSave();
-  // Swaps a party slot with a box slot. Either may be empty, so this doubles as
-  // deposit and withdraw rather than needing three separate operations.
-  void swapPartyBox(uint8_t partyIdx, uint8_t boxIdx);
+  void boxClear();               // the old box, once migrated: emptied and its keys removed
 
   // combat stats of a party member, same formula as the live pet's
   uint16_t atkOf(const PartyMon &m) const;
