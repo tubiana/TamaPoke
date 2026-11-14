@@ -18,6 +18,7 @@ Personal, non-commercial fan project. Code MIT; sprites CC BY-NC (PMD SpriteColl
 | `calendar.h` | Dates from the RTC, the calendar events and their egg types; pure, so `calendar_test` sweeps whole years |
 | `i18n.cpp/.h` | 7-language string table (ES/EN/FR/DE/IT/PT/NL) |
 | `audio.cpp/.h` | ES8311 codec over I2S |
+| `speech.cpp/.h` | The spoken UI (Carl Megens): the canvas notes every glyph and box drawn, so a touch reads out the text under it from `/voice/<lang>/` on the SD. `tools/gen_voice.py <lang> <voice.onnx>` builds a pack; its `tokens()` must stay the twin of `speechTokens()` (`speech_test`). The say task runs on core 0 |
 | `backs.h` | GENERATED (`tools/gen_backs.py`) from `tools/backs/*.png`: the biome backdrops (supplied art), the gym arenas (`tools/gen_scenes.py`, ours) and the main screen's `HOMES` (`tools/gen_home.py`, ours: one index image per biome with FOUR palettes, dawn/day/dusk/night, which `home_test` reads back off the panel). Any PNG under a scene's name replaces it |
 | `power.h` / `batcurve.h` / `blit.h` | From upstream (ViezeVingertjes): the power policy (frame rate, brightness, light sleep, `idleSince()`), the LiPo gauge and safe power-off, and sprites drawn as runs. Pure, so `power_test`, `batcurve_test` and `blit_test` drive them |
 | `audio_mix.h` | How loud each kind of sound is, and the music stepper -- shared with `loud_test`, which measures the balance |

@@ -21,7 +21,7 @@ mkdir -p "$WORK/shots" "$ROOT/manual"
 { echo '#include "proto.h"'; cat "$ROOT/TamaPoke.ino"; } > "$EMU/sketch.cpp"
 
 g++ -std=c++17 -O1 -w -I"$EMU" -I"$ROOT" -DSPRITE_DIR='"x"' -o "$WORK/cap" \
-  "$HERE/cap.cpp" "$ROOT"/{gbsynth,pet,i18n,party,battle,link,save,pcbox}.cpp \
+  "$HERE/cap.cpp" "$ROOT"/{gbsynth,pet,i18n,party,battle,link,save,pcbox,speech}.cpp \
   "$EMU"/{sketch,host_impl,font,clock}.cpp
 
 [ -d "$WORK/sd/mons" ] || python "$HERE/unpack_pak.py" "$ROOT/web/sprites-kanto.pak" "$WORK/sd"

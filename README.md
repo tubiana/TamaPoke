@@ -3,9 +3,9 @@
 [![Flash in browser](https://img.shields.io/badge/flash-in%20browser-FF6B00?logo=googlechrome&logoColor=white)](https://tubiana.github.io/TamaPoke/web/)
 [![MakerWorld](https://img.shields.io/badge/MakerWorld-3D%20case-00AE42?logo=bambulab&logoColor=white)](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)
 ![Board](https://img.shields.io/badge/board-ESP32--S3%20round%20AMOLED-E7352C?logo=espressif&logoColor=white)
-![Firmware](https://img.shields.io/badge/firmware-v3.35-8A2BE2)
+![Firmware](https://img.shields.io/badge/firmware-v3.36-8A2BE2)
 ![Code](https://img.shields.io/badge/code-MIT-blue)
-![Languages](https://img.shields.io/badge/languages-6-FFCB05)
+![Languages](https://img.shields.io/badge/languages-7-FFCB05)
 [![Stars](https://img.shields.io/github/stars/tubiana/TamaPoke?style=flat&logo=github&color=yellow)](https://github.com/tubiana/TamaPoke/stargazers)
 
 A gen-1-Pokémon-inspired tamagotchi for the
@@ -44,7 +44,7 @@ and complete them all (shinies included).
 
 ## What this fork adds
 
-New since Dylan's v3.11, up to v3.35 (the details are in
+New since Dylan's v3.11, up to v3.36 (the details are in
 [docs/fork-changes.md](docs/fork-changes.md)):
 
 - 🧭 [**A menu of big tiles**](#a-menu-of-big-tiles): everything in three pages, trading included
@@ -52,6 +52,7 @@ New since Dylan's v3.11, up to v3.35 (the details are in
 - ✨ [**Animated fights**](#animated-fights): every move drawn in its type, and a ball that wobbles
 - 📦 [**Boxes, adoption, experience, trading**](#boxes-adoption-experience-trading)
 - 🧒 [**For kids**](#for-kids): kid mode, a daily quiz, birthday and calendar surprises, names in your language
+- 🗣️ [**A voice that reads the screen**](#a-voice-that-reads-the-screen), in all seven languages, by [Carl Megens](https://github.com/carlmegens)
 - 📖 [**A printable manual**](#a-printable-manual-for-kids) in English, French and German
 - 🔊 [**Cries**](#cries-build-them-yourself), which you build yourself for licence reasons
 - 🎨 [**Scenes drawn by code**](#scenes-drawn-by-code): homes for every time of day, and gym arenas
@@ -123,6 +124,15 @@ trade plays the swap: your Pokemon leaves in a ball and theirs drops in.
   and a sticker book to collect them.
 - **Easier to use:** species and move names follow the UI language, taps are
   forgiving, and holding PWR for 2 s turns the board off.
+
+### A voice that reads the screen
+
+For children who cannot read yet: with **VOICE** on (SETTINGS > OPTIONS, beside
+kid mode), touching any text or button reads it out, in the UI language. The
+clips are synthesised offline with Piper and loaded from the web installer, one
+pack per language (20-35 MB each). Built by **[Carl Megens](https://github.com/carlmegens)**
+for his Dutch children, who also brought the **Dutch** UI; this fork made it work
+in every language. Voices and their licences: [CREDITS.md](CREDITS.md#voices).
 
 ### A printable manual for kids
 
@@ -1046,7 +1056,9 @@ legendary/shiny IV guarantees, which apply at hatch) ·
 runaway-ready state) · `WIPE` (factory reset → new game) · `BEEP` (audio test) ·
 `REG` (Pokédex) · `EGGS` (simulate 20 eggs) · `GAL` (gallery) · `CAREDAY` ·
 `PARTY` / `PARTY <dex>` / `PARTY CLEAR` (inspect and fill the party) · `PC`
-(what the boxes hold) ·
+(what the boxes hold) · `SAY <text>` / `TOUCH <x> <y>` / `SPK` (the voice: say
+a text, say what is at a point, list the texts on screen) · `PWR` (the PMU's
+battery and charger registers) ·
 `TIME <epoch>` / `RTCSET <epoch>` · `HEALTH` (uptime + heap for the soak test) ·
 `LS` / `PUT` (SD files).
 
@@ -1071,7 +1083,8 @@ All sprites: [PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab)
 (community, CC BY-NC). Base stats: [PokéAPI](https://pokeapi.co). Pokémon is a ™ of
 Nintendo / Game Freak / The Pokémon Company. Non-commercial, personal-use project.
 Code: **Quique Tortosa** ([original](https://github.com/socquique/TamaPoke)),
-**Dylan Dao** ([fork](https://github.com/DylanPDao/TamaPoke)) and this fork.
+**Dylan Dao** ([fork](https://github.com/DylanPDao/TamaPoke)), this fork, and
+**Carl Megens** (Dutch and the voice). Voices: [Piper](https://github.com/rhasspy/piper).
 Full list in [`CREDITS.md`](CREDITS.md).
 
 ## License

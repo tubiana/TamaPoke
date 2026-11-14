@@ -226,8 +226,10 @@ public:
   // Player-wide settings in OPTIONS. They outlive every creature, like the
   // badges, so newEgg() must never reset them.
   bool kidMode = false;
+  bool voiceOn = false;         // read out what is touched (speech.cpp); OPTIONS page
   uint8_t drainPct = 100;       // DRAIN_MIN..100, how fast the needs drop
   void setKidMode(bool on);
+  void setVoice(bool on);
   void setDrainPct(int pct);    // clamped and snapped to DRAIN_STEP
   // The quiz's daily allowance, counted per RTC day (today()).
   uint8_t quizLeft() const;

@@ -23,6 +23,11 @@ This repository is the third link of a chain, and each link is someone's work:
 Each layer sits on the ones before it and would not exist without them. All
 three are MIT on the same terms as the original licence.
 
+**Carl Megens** ([carlmegens](https://github.com/carlmegens)) contributed the
+Dutch UI ([#44](https://github.com/tubiana/TamaPoke/pull/44)) and the spoken UI:
+touching any text reads it out (`speech.cpp`, `tools/gen_voice.py`), first in
+Dutch for his own children, then generalised here to every language.
+
 Upstream keeps moving, and good work there is carried over: the battery and
 frame-rate work (`power.h`, `batcurve.h`, `blit.h` -- adaptive frame rate,
 light sleep, the LiPo gauge and safe power-off, sprites drawn as runs) is from
@@ -93,6 +98,25 @@ repo is published, the clean approach is the same one already recommended for
 the PMD sprites above: **ship `tools/gen_avatars.py` and not `avatars.h`**, so
 each user fetches the art themselves — the script needs only `curl` and takes a
 second to run.
+
+## Voices
+
+The spoken UI's clips are synthesised offline by `tools/gen_voice.py` with
+[Piper](https://github.com/rhasspy/piper) (MIT), one voice per language from
+[rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices):
+
+| Language | Voice | Licence of the voice's dataset |
+|---|---|---|
+| English | `en_US-kristin-medium` | public domain (LibriVox) |
+| French | `fr_FR-siwis-medium` | **CC BY 4.0** -- SIWIS French Speech Synthesis Database, University of Edinburgh |
+| German | `de_DE-kerstin-medium` | CC0 |
+| Spanish | `es_ES-davefx-medium` | CC0 |
+| Italian | `it_IT-paola-medium` | CC0 |
+| Portuguese | `pt_PT-tugão-medium` | CC0 |
+| Dutch | `nl_NL-ronnie-medium` | CC0 (the voice Carl Megens chose) |
+
+The packs (`web/voice-<lang>.pak`) are committed beside the sprite packs: they
+say only TamaPoke's own texts and the names the screen shows.
 
 ## Cries
 

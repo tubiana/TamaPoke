@@ -59,15 +59,15 @@ standalone() { case "$1" in synth_test|loud_test|batcurve_test|blit_test) return
 
 # sprite_test drives PmdMon straight off the sprite directory, so it needs the
 # host's SD stubs but none of the sketch
-needs_host() { case "$1" in sprite_test) return 0;; *) return 1;; esac; }
+needs_host() { case "$1" in sprite_test|speech_test) return 0;; *) return 1;; esac; }
 
 pass=0; fail=0
 for src in "$HERE"/*_test.cpp; do
   name="$(basename "$src" .cpp)"
   [ -n "$FILTER" ] && [[ "$name" != *"$FILTER"* ]] && continue
   extra=()
-  needs_sketch "$name" && extra=("$EMU/sketch.cpp" "$EMU/host_impl.cpp" "$EMU/font.cpp" "$EMU/clock.cpp")
-  needs_host "$name" && extra=("$EMU/host_impl.cpp" "$EMU/font.cpp")
+  needs_sketch "$name" && extra=("$EMU/sketch.cpp" "$EMU/host_impl.cpp" "$EMU/font.cpp" "$EMU/clock.cpp" "$ROOT/speech.cpp")
+  needs_host "$name" && extra=("$EMU/host_impl.cpp" "$EMU/font.cpp" "$ROOT/speech.cpp")
   srcs=("${CORE[@]}")
   standalone "$name" && srcs=("$ROOT/gbsynth.cpp")
   # every test starts from a clean NVS so one cannot leak state into the next

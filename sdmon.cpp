@@ -3,6 +3,8 @@
 #include "pin_config.h"
 #include "pet.h"   // gRegionArt, REGIONS -- the mask this narrows
 #include "audio.h"  // cryPlay hands the PCM to the audio task
+#include "i18n.h"   // LANG_COUNT
+#include "speech.h" // a voice folder per language
 #include <FS.h>
 #include <SD_MMC.h>
 
@@ -161,7 +163,12 @@ bool sdBegin() {
     Serial.printf("SD montada: %llu MB\n", SD_MMC.cardSize() / (1024ULL * 1024ULL));
     SD_MMC.mkdir("/mons");
     SD_MMC.mkdir("/cries");   // PUT cannot create a folder, so the cries pack needs it here
-    SD_MMC.mkdir("/voice");   // the Dutch speech clips (speech.cpp)
+    SD_MMC.mkdir("/voice");   // the speech clips (speech.cpp), one folder per language
+    for (uint8_t l = 0; l < LANG_COUNT; l++) {
+      char d[16];
+      snprintf(d, sizeof(d), "/voice/%s", speechLangDir(l));
+      SD_MMC.mkdir(d);
+    }
     sdScanRegionArt();
   } else {
     Serial.println("SD no detectada (el juego usa los sprites de flash)");

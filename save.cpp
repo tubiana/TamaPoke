@@ -32,7 +32,7 @@ const SaveField SAVE_FIELDS[] = {
   { "ghi", SK_U16 },    { "shi", SK_U16 },    { "qhi", SK_U16 },
   { "kid", SK_BOOL },   { "drn", SK_U8 },     { "qday", SK_U32 },   { "qn", SK_U8 },
   { "qok", SK_U16 },    { "bdm", SK_U8 },     { "bdd", SK_U8 },     { "gyr", SK_U16 },
-  { "stkr", SK_U32 },   { "qtr", SK_U8 },
+  { "stkr", SK_U32 },   { "qtr", SK_U8 },     { "voice", SK_BOOL },
   { "exn", SK_U8 },     { "exa", SK_U16 },    { "dxsn", SK_BYTES },
   { "pxp", SK_BYTES },  { "bxp", SK_BYTES },  { "bstlv", SK_U8 },
   // the banked creatures

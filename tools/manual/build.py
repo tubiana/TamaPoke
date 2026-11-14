@@ -428,7 +428,8 @@ def build(lang, T):
         d.caption(T[k], xs[i], y - s, s)
     y -= s + 26
     y = d.legend([(1, T['s1']), (2, T['s2'])], M, y, CW, 12.5)
-    for lab, key, col in [(T['kid_l'], 'kid', GREEN), (T['spd_l'], 'spd', BLUE), (T['date_l'], 'datet', ORANGE)]:
+    for lab, key, col in [(T['kid_l'], 'kid', GREEN), (T['voice_l'], 'voice', PURP), (T['spd_l'], 'spd', BLUE),
+                          (T['date_l'], 'datet', ORANGE)]:
         y = d.box(lab, T[key], M, y, CW, col, 12)
 
     # 16 -- help

@@ -132,6 +132,21 @@
        the cries, when this page has them), Kanto first. About 230 MB: count on
        <b>an hour or more</b>. Leave it running; a region that fails is reported
        and the next one still goes.</p>
+    <h3>🗣️ Voice (optional): it reads out whatever is touched</h3>
+    <p class="note">For children who cannot read yet. Send the pack of the language
+       the board is set to (or several), then turn on <b>VOICE</b> in SETTINGS &gt;
+       OPTIONS, beside kid mode. Each is 20–35 MB: <b>6–12 minutes</b>.</p>
+    <div class="row">
+      <button data-region="voice-en" data-pak="voice-en.pak" data-voice disabled>🗣️ English</button>
+      <button data-region="voice-fr" data-pak="voice-fr.pak" data-voice disabled>🗣️ Français</button>
+      <button data-region="voice-de" data-pak="voice-de.pak" data-voice disabled>🗣️ Deutsch</button>
+      <button data-region="voice-es" data-pak="voice-es.pak" data-voice disabled>🗣️ Español</button>
+      <button data-region="voice-it" data-pak="voice-it.pak" data-voice disabled>🗣️ Italiano</button>
+      <button data-region="voice-pt" data-pak="voice-pt.pak" data-voice disabled>🗣️ Português</button>
+      <button data-region="voice-nl" data-pak="voice-nl.pak" data-voice disabled>🗣️ Nederlands</button>
+    </div>
+    <p class="note">The voices are synthesised with <a href="https://github.com/rhasspy/piper" target="_blank">Piper</a>
+       (see CREDITS.md for each voice's licence) by <code>tools/gen_voice.py</code>.</p>
     <p class="note">🔊 The cries are optional: without them the creatures are simply
        silent. They are the games' own sounds (© The Pokémon Company), fetched by
        <code>tools/pack_cries.py</code> from <a href="https://github.com/PokeAPI/cries" target="_blank">PokeAPI/cries</a>.</p>
@@ -453,7 +468,8 @@ for (const b of document.querySelectorAll('[data-region]')) b.onclick = () => lo
 document.getElementById('autoall').onclick = async () => {
   if (!writer) { log('Connect the board first.'); return; }
   const all = document.getElementById('autoall');
-  const todo = [...document.querySelectorAll('[data-region]')].filter(b => !b.disabled);
+  // the voices are one per language: nobody wants all seven, so they are not "everything"
+  const todo = [...document.querySelectorAll('[data-region]:not([data-voice])')].filter(b => !b.disabled);
   if (!todo.length) { log('Nothing to send: no bundle is published here.'); return; }
   all.disabled = true;
   for (let i = 0; i < todo.length; i++) {

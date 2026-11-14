@@ -197,7 +197,7 @@ int speechTokens(const char *text, char *out, int outLen, int16_t *starts, int m
     if (!c) {
       bool numBefore = p > text && cls(p[-1]) == 2;
       bool numAfter = cls(p[1]) == 2;
-      if (*p == '/' && numBefore && numAfter) add("van", 3);
+      if (*p == '/' && numBefore && numAfter) add("slash", 5);
       else if (*p == '+' && numAfter) add("plus", 4);
       p++;
       continue;
@@ -216,47 +216,58 @@ int speechTokens(const char *text, char *out, int outLen, int16_t *starts, int m
 }
 
 struct VEntry { uint32_t hash; uint16_t chunk, pad; uint32_t off, len; };
-static VEntry *gIdx;
-static uint32_t gCount;
-static uint8_t gMaxTok;
-static uint32_t gLastTry;
-static bool gTried;
+// One index per language, loaded the first time that language speaks and then
+// kept (~45 KB of PSRAM each). Never freed: the say task on core 0 may still be
+// reading one when the language changes, and a pointer that stays valid is
+// simpler than a lock.
+struct VPack { VEntry *idx; uint32_t count; uint8_t maxTok; uint32_t lastTry; bool tried; };
+static VPack gPack[LANG_COUNT];
+static bool gOn = false;
 
-static void loadIndex() {
-  if (gIdx) return;
-  if (gTried && millis() - gLastTry < 10000) return;
-  gTried = true;
-  gLastTry = millis();
-  int32_t n = vSize("/voice/index.bin");
-  if (n < 12) return;
+// In Lang order. Sized by its initialiser, so a language added to the enum and
+// not here fails to build instead of reading a null directory.
+static const char *const LANG_DIR[] = { "es", "en", "fr", "de", "it", "pt", "nl" };
+static_assert(sizeof(LANG_DIR) / sizeof(LANG_DIR[0]) == LANG_COUNT, "a voice folder per UI language");
+const char *speechLangDir(uint8_t lang) { return LANG_DIR[lang % LANG_COUNT]; }
+
+static VPack *loadIndex(uint8_t lang) {
+  VPack &p = gPack[lang % LANG_COUNT];
+  if (p.idx) return &p;
+  // a card put in later, or a pack sent over PUT, is found within 10 s
+  if (p.tried && millis() - p.lastTry < 10000) return nullptr;
+  p.tried = true;
+  p.lastTry = millis();
+  char path[32];
+  snprintf(path, sizeof(path), "/voice/%s/index.bin", speechLangDir(lang));
+  int32_t n = vSize(path);
+  if (n < 12) return nullptr;
   uint8_t hdr[12];
-  if (!vRead("/voice/index.bin", 0, hdr, 12) || memcmp(hdr, "VIX1", 4)) return;
+  if (!vRead(path, 0, hdr, 12) || memcmp(hdr, "VIX1", 4)) return nullptr;
   uint32_t count;
   memcpy(&count, hdr + 4, 4);
-  if ((int32_t)(12 + count * sizeof(VEntry)) > n) return;
+  if ((int32_t)(12 + count * sizeof(VEntry)) > n) return nullptr;
   VEntry *idx = (VEntry *)ps_malloc(count * sizeof(VEntry));
-  if (!idx) return;
-  if (!vRead("/voice/index.bin", 12, idx, count * sizeof(VEntry))) { free(idx); return; }
-  gIdx = idx;
-  gCount = count;
-  gMaxTok = hdr[8] ? hdr[8] : 1;
+  if (!idx) return nullptr;
+  if (!vRead(path, 12, idx, count * sizeof(VEntry))) { free(idx); return nullptr; }
+  p.count = count;
+  p.maxTok = hdr[8] ? hdr[8] : 1;
+  p.idx = idx;   // last: the say task only ever sees a whole index
+  return &p;
 }
 
-bool speechReady() {
-  if (gLang != LANG_NL) return false;
-  loadIndex();
-  return gIdx != nullptr;
-}
+void speechSetEnabled(bool on) { gOn = on; }
+bool speechHasPack() { return loadIndex(gLang) != nullptr; }
+bool speechReady() { return gOn && speechHasPack(); }
 
-static const VEntry *find(const char *s, int n) {
+static const VEntry *find(const VPack &p, const char *s, int n) {
   uint32_t h = speechHash(s, n);
-  uint32_t lo = 0, hi = gCount;
+  uint32_t lo = 0, hi = p.count;
   while (lo < hi) {
     uint32_t m = (lo + hi) / 2;
-    if (gIdx[m].hash < h) lo = m + 1;
+    if (p.idx[m].hash < h) lo = m + 1;
     else hi = m;
   }
-  return (lo < gCount && gIdx[lo].hash == h) ? &gIdx[lo] : nullptr;
+  return (lo < p.count && p.idx[lo].hash == h) ? &p.idx[lo] : nullptr;
 }
 
 #define SAY_MAX (16000 * 10)   // 10 s of 8-bit 16 kHz
@@ -312,29 +323,86 @@ bool speechSay(const char *text) {
 }
 #endif
 
-static bool sayNow(const char *text) {
+// The clips for a number token: its own if the pack has one, else built from
+// the thousands, hundreds and the rest, else its digits. Returns the new np.
+static int sayNumber(const VPack &pk, const char *s, int len, const VEntry **parts, int np, int max) {
+  bool digits = len > 0 && len <= 4;
+  for (int k = 0; k < len; k++) digits = digits && s[k] >= '0' && s[k] <= '9';
+  if (digits) {
+    int v = atoi(s);
+    char b[8];
+    const int unit[3] = { 1000, 100, 1 };
+    int rest = v, before = np;
+    bool whole = true;
+    for (int u = 0; u < 3 && rest && whole; u++) {
+      int part = u < 2 ? rest / unit[u] * unit[u] : rest;
+      if (!part) continue;
+      int bl = snprintf(b, sizeof(b), "%d", part);
+      // the pack has 0..200: say 150 whole rather than "100" + "50"
+      if (u == 1 && rest <= 200) { bl = snprintf(b, sizeof(b), "%d", rest); part = rest; }
+      const VEntry *e = find(pk, b, bl);
+      if (!e || np >= max) whole = false;
+      else { parts[np++] = e; rest -= part; }
+    }
+    if (whole && np > before) return np;
+    np = before;
+    if (v == 0) {
+      if (const VEntry *e = find(pk, "0", 1)) { if (np < max) parts[np++] = e; return np; }
+    }
+  }
+  for (int k = 0; k < len && np < max; k++)
+    if (s[k] >= '0' && s[k] <= '9')
+      if (const VEntry *d = find(pk, s + k, 1)) parts[np++] = d;
+  return np;
+}
+
+// The clips a text is said with, in order: its phrases longest first, numbers
+// built from parts, unknown words skipped. Returns how many.
+static int plan(const VPack *pk, const char *text, const VEntry **parts) {
   char norm[160];
   int16_t st[24];
   int n = speechTokens(text, norm, sizeof(norm), st, 24);
-  if (!n) return false;
+  if (!n) return 0;
 
-  const VEntry *parts[32];
   int np = 0;
   for (int i = 0; i < n && np < 32;) {
     const VEntry *e = nullptr;
-    int L = gMaxTok < n - i ? gMaxTok : n - i;
+    int L = pk->maxTok < n - i ? pk->maxTok : n - i;
     for (; L >= 1; L--) {
       int end = (i + L < n) ? st[i + L] - 1 : (int)strlen(norm);
-      if ((e = find(norm + st[i], end - st[i]))) break;
+      if ((e = find(*pk, norm + st[i], end - st[i]))) break;
     }
     if (e) { parts[np++] = e; i += L; continue; }
-    // an unknown number is read digit by digit; an unknown word is skipped
+    // A number with no clip of its own is put together from ones that have:
+    // the packs hold 0..200 and the hundreds, so 347 is "300" + "47" and 1047
+    // is "1000" + "47" -- that reads right in all seven languages and saves a
+    // thousand clips. Failing that it is read digit by digit; an unknown word
+    // is skipped.
     int end = (i + 1 < n) ? st[i + 1] - 1 : (int)strlen(norm);
-    for (int k = st[i]; k < end && np < 32; k++)
-      if (norm[k] >= '0' && norm[k] <= '9')
-        if (const VEntry *d = find(norm + k, 1)) parts[np++] = d;
+    np = sayNumber(*pk, norm + st[i], end - st[i], parts, np, 32);
     i++;
   }
+#if !defined(ESP_PLATFORM)
+  printf("speech: \"%s\" -> %s (%d clips)\n", text, norm, np);
+#endif
+  return np;
+}
+
+int speechPlan(const char *text, uint32_t *lens, int max) {
+  const VPack *pk = loadIndex(gLang);
+  if (!pk || !text) return 0;
+  const VEntry *parts[32];
+  int np = plan(pk, text, parts);
+  for (int i = 0; i < np && i < max; i++) lens[i] = parts[i]->len;
+  return np;
+}
+
+static bool sayNow(const char *text) {
+  uint8_t lang = gLang;
+  const VPack *pk = loadIndex(lang);
+  if (!pk) return false;
+  const VEntry *parts[32];
+  int np = plan(pk, text, parts);
   if (!np) return false;
 
   uint32_t total = 0;
@@ -350,14 +418,11 @@ static bool sayNow(const char *text) {
       at += g;
     }
     uint32_t len = parts[i]->len < total - at ? parts[i]->len : total - at;
-    char path[24];
-    snprintf(path, sizeof(path), "/voice/v%02u.bin", parts[i]->chunk);
+    char path[32];
+    snprintf(path, sizeof(path), "/voice/%s/v%02u.bin", speechLangDir(lang), parts[i]->chunk);
     if (!vRead(path, parts[i]->off, pcm + at, len)) memset(pcm + at, 0, len);
     at += len;
   }
-#if !defined(ESP_PLATFORM)
-  printf("speech: \"%s\" -> %s (%d clips)\n", text, norm, np);
-#endif
   audioStopPcm();   // and anything queued since
   audioPlayPcm(pcm, at);
   return true;

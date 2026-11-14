@@ -378,6 +378,11 @@ void Pet::setKidMode(bool on) {
   save();
 }
 
+void Pet::setVoice(bool on) {
+  voiceOn = on;
+  save();
+}
+
 void Pet::setDrainPct(int pct) {
   if (pct < DRAIN_MIN) pct = DRAIN_MIN;
   if (pct > 100) pct = 100;
@@ -1677,6 +1682,7 @@ void Pet::save() {
   prefs.putUShort("bstrk", bestStreak);
   prefs.putUInt("cday", lastCareDay);
   prefs.putBool("kid", kidMode);
+  prefs.putBool("voice", voiceOn);
   prefs.putUChar("drn", drainPct);
   prefs.putUInt("qday", quizDay);
   prefs.putUChar("qn", quizUsed);
@@ -1757,6 +1763,7 @@ void Pet::load() {
   bestStreak = prefs.getUShort("bstrk", 0);
   lastCareDay = prefs.getUInt("cday", 0);
   kidMode = prefs.getBool("kid", false);
+  voiceOn = prefs.getBool("voice", false);
   drainPct = prefs.getUChar("drn", 100);
   if (drainPct < DRAIN_MIN || drainPct > 100 || drainPct % DRAIN_STEP) drainPct = 100;
   quizDay = prefs.getUInt("qday", 0);
