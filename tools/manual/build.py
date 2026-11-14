@@ -366,11 +366,11 @@ def build(lang, T):
     y = d.y; s = 165
     d.img(shot('wild', L, marks=((1, 317, 296, 46),)), xs[0], y, s)
     d.img(shot('caught', L, marks=((2, 324, 100, 40),)), xs[1], y, s)
-    d.img(shot('keep', L, marks=((3, 233, 216, 0, 60, 216),)), xs[2], y, s)
+    d.img(shot('boxes', L, marks=((3, 233, 80, 0, 426, 80),)), xs[2], y, s)
     y -= s + 6
     y = d.legend([(1, T['c1']), (2, T['c2']), (3, T['c3'])], M, y, CW, 13)
     s = 190
-    d.img(shot('dexbox', L, marks=((4, 152, 367, 0, 40, 367), (5, 314, 367, 0, 426, 367))), M, y, s)
+    d.img(shot('boxsheet', L, marks=((4, 160, 360, 0, 40, 360), (5, 326, 360, 0, 426, 360))), M, y, s)
     d.legend([(4, T['c4']), (5, T['c5'])], M + s + 16, y - 20, CW - s - 16, 13)
     y -= s + 10
     d.box(T['tip'], T['catch_tip'], M, y, CW, YEL)
@@ -380,9 +380,9 @@ def build(lang, T):
     y = d.y; s = 165
     d.img(shot('menu', L, marks=((1, 156, 143, 0, 40, 143),)), xs[0], y, s)
     d.img(shot('dexpick', L, marks=((2, 233, 130, 0, 46, 130),)), xs[1], y, s)
-    d.img(shot('dex', L, marks=((3, 353, 124, 38),)), xs[2], y, s)
+    d.img(shot('dex', L, marks=((3, 353, 148, 38), (5, 308, 80, 0, 426, 80))), xs[2], y, s)
     y -= s + 6
-    y = d.legend([(1, T['d1']), (2, T['d2']), (3, T['d3'])], M, y, CW, 13)
+    y = d.legend([(1, T['d1']), (2, T['d2']), (3, T['d3']), (5, T['d5'])], M, y, CW, 13)
     s = 190
     d.img(shot('dexdetail', L, marks=((4, 233, 262, 60),)), W / 2 - s / 2, y, s)
     y -= s + 4

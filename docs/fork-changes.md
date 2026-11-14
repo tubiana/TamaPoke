@@ -1,7 +1,7 @@
 # What this fork adds: the details
 
 The README gives a short summary of what this fork added after Dylan Dao's
-v3.11 (up to v3.32). This page has the rest of the detail. The exact numbers
+v3.11 (up to v3.35). This page has the rest of the detail. The exact numbers
 (odds, thresholds, drain rates) are in the README's
 [Game rules and numbers](../README.md#game-rules-and-numbers).
 
@@ -45,14 +45,29 @@ This fork adds the animations on top of it:
 - **A trade plays the swap**: your creature leaves in a ball, theirs drops in
   and opens, and an evolution on arrival flickers between its two forms.
 
-## Pokédex box, adoption, experience, trading
+## Boxes, adoption, experience, trading
 
-- **Every catch goes to the Pokédex box**, one creature per species.
-  - The box is a file on the board's FAT partition, because 790 creatures do
-    not fit in NVS.
-  - From the box you can send a creature **TO TEAM**, or **ADOPT** it in place
-    of the waiting egg. An adopted creature is raised from level 1, exactly
-    like a hatched one.
+- **The boxes (v3.35)**, as in the real games. Every creature not in the six
+  lives there: catches, trades and the birthday present arrive at the end.
+  - They replace two older stores: the 18-slot box (NVS) and the Pokédex box
+    (3.19-3.34, one creature per species, which made a second catch of a
+    species ask which one to keep). Both are emptied into the boxes on the
+    first boot of 3.35, each source cleared only after the boxes were written.
+  - A list of up to 960 in one file on the board's FAT partition (`pcbox.cpp`),
+    held in PSRAM and rewritten whole, beside the old one and then swapped in,
+    so a power cut leaves the old list or the new one.
+  - The boxes screen: a 4x3 grid, sorted by arrival or by number, filtered by
+    region and by type. A creature's sheet offers **TO TEAM** (with a full
+    team, the team opens to pick who swaps) and **ADOPT** in place of the
+    waiting egg. A party member's sheet gained **TO BOX**. Experience travels
+    both ways. Nothing is released from the boxes.
+  - A farewell with a full team no longer offers to let the creature go: the
+    bottom button sends it to the boxes, and so does a swipe.
+  - Trading offers the team only; what arrives goes to the boxes.
+- **The Pokédex shows, it does not store.** A Pokéball on a species means one
+  is in the boxes, a green dot that one is with you (the team, or the creature
+  you raise). Its page says how many. It filters by type, pages 12 at a time,
+  and has a CLOSE button.
 - **Banked creatures gain experience** by fighting, and they level up and
   evolve. Their ceiling is the best level you raised yourself.
 - **Trading** between two boards over the LAN link. Each side stores the other

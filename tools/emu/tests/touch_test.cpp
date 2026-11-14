@@ -175,8 +175,8 @@ int main(int argc, char **argv) {
 
   click(233, 60);                        // name/status band opens the menu
   if (!menuOpen) { printf("FAIL: name band did not open the menu\n"); return 1; }
-  click(300, 324);                       // the right-hand page dot: page 2
-  click(305, 143);                       // page 2, top-right tile == STATS
+  click(233, 324);                       // the middle page dot: page 2
+  click(156, 259);                       // page 2, bottom-left tile == STATS
   if (!cardOpen || cardPage != 1) {
     printf("FAIL: STATS tile ->cardOpen=%d cardPage=%d (want 1,1)\n",
            (int)cardOpen, (int)cardPage);

@@ -12,6 +12,7 @@
 #include "Preferences.h"
 #include "pet.h"
 #include "party.h"
+#include "pcbox.h"
 #include "battle.h"
 #include "moves.h"
 #include <cstdio>
@@ -34,7 +35,9 @@ static int bad=0;
 static void ck(bool ok,const char*w){printf("%s  %s\n",ok?"PASS":"FAIL",w); if(!ok)bad++;}
 
 static PartyMon mon(int16_t dex, uint16_t lvl){ PartyMon m; makeMon(dex, lvl, false, m); return m; }
-static void clearTeam(){ for (int i=0;i<PARTY_SLOTS;i++) party.releaseAt(i); for (int i=0;i<BOX_SLOTS;i++) party.boxReleaseAt(i); }
+static void clearTeam(){ for (int i=0;i<PARTY_SLOTS;i++) party.releaseAt(i); pcWipe(); }
+bool teamToBox(uint8_t slot);
+bool boxToTeamDo(uint16_t i, int slot);
 
 int main(){
   setup();
@@ -91,11 +94,16 @@ int main(){
   clearTeam();
   party.replaceAt(0, mon(16, 10));
   party.gainXp(0, 33, 30);
-  party.boxAdd(mon(19, 12));
-  party.swapPartyBox(0, 0);
-  ck(party.xp[0] == 0 && party.boxXp[0] == 33, "into the box and back out, the experience goes with it");
-  party.swapPartyBox(0, 0);
-  ck(party.xp[0] == 33 && party.boxXp[0] == 0, "...both ways");
+  pcAdd(mon(19, 12), 5);
+  teamToBox(0);
+  { PartyMon m; uint16_t x = 0; pcGet(1, m, &x);
+    ck(party.slots[0].empty() && m.dex == 16 && x == 33, "into the boxes, the experience goes with it"); }
+  boxToTeamDo(1, -1);
+  ck(party.slots[0].dex == 16 && party.xp[0] == 33 && pcCount() == 1, "...and back out");
+  party.replaceAt(1, mon(21, 9)); party.xp[1] = 4; party.save();
+  boxToTeamDo(0, 1);                    // a swap: the box's 19 for the team's 21
+  { PartyMon m; uint16_t x = 0; pcGet(0, m, &x);
+    ck(party.slots[1].dex == 19 && party.xp[1] == 5 && m.dex == 21 && x == 4, "a swap moves both creatures' experience"); }
   party.begin();
   ck(party.xp[0] == 33, "and survives a reload");
   party.releaseAt(0);

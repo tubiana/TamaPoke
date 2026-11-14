@@ -37,7 +37,7 @@ int uiSleepButton(int *cx, int *cy);
 void uiEggPillRect(int *x, int *y, int *w, int *h, bool hitArea);
 bool uiButtonDisabled(int i);
 void uiButtonAt(int i, int *cx, int *cy, int *half);
-bool monSheetBtn(int16_t x, int16_t y, bool left);
+int sheetBtnAt(bool fromBox, int16_t x, int16_t y);
 void uiConfirmRects(int *b1Top, int *b1Bot, int *b2Top, int *b2Bot);
 #include "badges.h"
 #include "trainers.h"
@@ -268,54 +268,56 @@ int main(){
     ck(pet.ceremony != CER_NONE, "and the tap lets it go, without asking");
   }
 
-  // ---- the party/box detail sheet, where RELEASE is irreversible
+  // ---- the detail sheets: the team's (BRING BACK / TO BOX / RELEASE, and
+  // RELEASE is irreversible) and the boxes' (TO TEAM / ADOPT)
   //
   // The bounds are DISCOVERED by probing the firmware's own predicate rather
   // than restated from the PDET_* constants. A test that copies the numbers
   // passes happily after somebody moves the button and forgets the test, which
   // is the failure mode section 3 of CLAUDE.md is about.
-  {
-    int lT=999, lB=-1, lL=999, lR=-1, rT=999, rB=-1, rL=999, rR=-1;
-    for (int y = 250; y < 440; y++) {
+  for (int fb = 0; fb < 2; fb++) {
+    const bool fromBox = fb == 1;
+    const int n = fromBox ? 2 : 3;
+    int T[3] = {999,999,999}, B[3] = {-1,-1,-1}, L[3] = {999,999,999}, Rr[3] = {-1,-1,-1};
+    for (int y = 250; y < 440; y++)
       for (int x = 40; x < 430; x++) {
-        if (monSheetBtn(x, y, true)) {
-          if (y < lT) lT = y;  if (y > lB) lB = y;
-          if (x < lL) lL = x;  if (x > lR) lR = x;
-        }
-        if (monSheetBtn(x, y, false)) {
-          if (y < rT) rT = y;  if (y > rB) rB = y;
-          if (x < rL) rL = x;  if (x > rR) rR = x;
-        }
+        int b = sheetBtnAt(fromBox, x, y);
+        if (b < 0) continue;
+        if (y < T[b]) T[b] = y;  if (y > B[b]) B[b] = y;
+        if (x < L[b]) L[b] = x;  if (x > Rr[b]) Rr[b] = x;
       }
+    const char *who = fromBox ? "box sheet" : "team sheet";
+    bool all = true, tall = true, wide = true, apart = true;
+    for (int i = 0; i < n; i++) {
+      if (B[i] <= T[i]) all = false;
+      if (B[i] - T[i] < 44) tall = false;
+      if (Rr[i] - L[i] < 44) wide = false;
+      if (i && L[i] - Rr[i - 1] < 8) apart = false;    // a real dead gap, never an overlap
     }
-    ck(lB > lT && rB > rT, "both sheet buttons have a hit area at all");
-    ck((lB - lT) >= 44 && (rB - rT) >= 44,
-       "and both are at least UI_TAP_MIN tall -- BRING BACK used to be 38");
-    ck((lR - lL) >= 44 && (rR - rL) >= 44, "and at least UI_TAP_MIN across");
-    // RELEASE cannot be recovered from, so a finger sliding off BRING BACK must
-    // land on nothing rather than on the destructive one.
-    ck(rL > lR, "they do not overlap");
-    ck(rL - lR >= 8, "and there is a real dead gap between them");
-    // WHERE THE GAP IS MATTERS. The first version centred the pair on 233, which
+    printf("      %s\n", who);
+    ck(all, "every sheet button has a hit area at all");
+    ck(tall, "and each is at least UI_TAP_MIN tall -- BRING BACK used to be 38");
+    ck(wide, "and at least UI_TAP_MIN across");
+    // RELEASE cannot be recovered from, so a finger sliding off its neighbour
+    // must land on nothing rather than on the destructive one.
+    ck(apart, "they do not overlap, and there is a real gap between each pair");
+    // WHERE THE GAP IS MATTERS. The first version centred a pair on 233, which
     // put the dead gap on the panel's centre line -- the one spot a thumb aims
-    // at, and exactly where every build up to v3.5 drew BRING BACK as a single
-    // full-width button. It was reported as "the bring back button is not
-    // working": the taps were landing between the two.
-    ck(monSheetBtn(233, (lT + lB) / 2, true),
-       "the panel CENTRE lands on the primary button, not in the gap");
-    ck(!monSheetBtn(233, (lT + lB) / 2, false),
-       "and never on the destructive one");
-    // Both must sit on the round panel: the corner furthest from the centre is
-    // the one that falls off a 466 px circle of radius 233.
+    // at. It was reported as "the bring back button is not working": the taps
+    // were landing between the two.
+    int mid = sheetBtnAt(fromBox, 233, (T[0] + B[0]) / 2);
+    ck(mid >= 0, "the panel CENTRE lands on a button, not in a gap");
+    ck(fromBox || mid != 2, "and never on RELEASE");
+    // Every corner must sit on the round panel.
     int worst = 0;
-    const int cx = 233, cy = 233;
-    int xs[4] = { lL, lR, rL, rR }, ys[2] = { lT, lB };
-    for (int i = 0; i < 4; i++)
-      for (int j = 0; j < 2; j++) {
-        int dx = xs[i] - cx, dy = ys[j] - cy;
+    for (int i = 0; i < n; i++) {
+      int xs[2] = { L[i], Rr[i] }, ys[2] = { T[i], B[i] };
+      for (int a = 0; a < 2; a++) for (int c = 0; c < 2; c++) {
+        int dx = xs[a] - 233, dy = ys[c] - 233;
         int d = (int)(0.5 + __builtin_sqrt((double)(dx*dx + dy*dy)));
         if (d > worst) worst = d;
       }
+    }
     ck(worst <= 233, "and every corner is still on the glass");
   }
 

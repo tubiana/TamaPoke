@@ -1,19 +1,19 @@
-// Exploring, catching and the Pokedex box -- through the real screens.
+// Exploring, catching and the boxes -- through the real screens.
 //
 // What is being held: the outing bar fills at its documented rates and never
 // past full, even after two weeks off; a wild creature only ever comes from the
 // place tapped, from an installed region, never a legendary; one never seen is
 // favoured; a ball holds more often on a hurt or common creature; the creature
-// caught is exactly the one fought; it lands in the Pokedex box and in the
-// Pokedex; catching a species again asks which to keep; and the Pokedex page
-// moves creatures between the box and the team without ever losing one.
+// caught is exactly the one fought; it lands at the end of the boxes and in the
+// Pokedex; catching a species again simply adds a second one; and the boxes and
+// the team screen move creatures between them without ever losing one.
 #include "Arduino.h"
 #include "Arduino_GFX_Library.h"
 #include "Preferences.h"
 #include "pet.h"
 #include "party.h"
 #include "battle.h"
-#include "dexbox.h"
+#include "pcbox.h"
 #include "backs.h"
 #include <cstdio>
 #include <cstring>
@@ -28,12 +28,17 @@ void exploreTap(int16_t x, int16_t y);
 void exploreSpotAt(uint8_t i, int *x, int *y);
 void battleTap(int16_t x, int16_t y);
 void uiConfirmRects(int *b1Top, int *b1Bot, int *b2Top, int *b2Bot);
-uint8_t dexPageAction(int16_t dex);
-bool dexPageDo(int16_t dex);
-void dexBoxRepair();
+void boxTap(int16_t x, int16_t y);
+void partyTap(int16_t x, int16_t y);
+void boxOpenFrom(bool menu);
+void sheetBtnRect(uint8_t n, uint8_t i, int *x, int *w);
+void pcStartup();
+extern bool boxOpen, partyOpen;
+extern uint16_t boxDetail, boxToTeam;
+extern uint8_t partyDetail;
 extern Pet pet;
 extern Party party;
-extern bool exploreOpen, expKeepAsk, battleOpen, btlWild, btlCaught, btlOver;
+extern bool exploreOpen, battleOpen, btlWild, btlCaught, btlOver;
 extern int8_t expPlace;
 extern uint8_t expActive, btlMenu, btlMsgCount;
 extern uint32_t expActiveUntil;
@@ -190,58 +195,79 @@ int main(){
   PartyMon fought = btlWildMon;
   ck(pet.isSeen(dex), "and it is SEEN from the moment it appears");
   ck(catchIt(), "a ball holds sooner or later");
-  ck(dexBoxHas(dex), "the catch lands in the Pokedex box");
+  ck(pcCount() >= 1, "the catch lands in the boxes");
+  PartyMon got; pcGet(pcCount() - 1, got);
+  ck(got.dex == dex, "at the END: the boxes keep the order things arrived in");
   ck(pet.isRegistered(dex), "and in the Pokedex");
   { Pet again; again.begin();    // what a reboot right after the catch would load
     ck(again.isRegistered(dex) && again.registeredCount() == pet.registeredCount(),
        "and it is SAVED: a reboot right after still has it in the Pokedex"); }
-  PartyMon got; dexBoxGet(dex, got);
   ck(got.level == fought.level && got.ivAtk == fought.ivAtk && got.moves[0] == fought.moves[0],
      "the creature kept is exactly the one fought");
 
-  // the same species again: which one to keep
+  // the same species again: no question, a second one
+  uint16_t pcBefore = pcCount();
   btlWild = true; btlCaught = true; battleOpen = false;
   makeMon(dex, got.level + 7, false, btlWildMon);
   render();
-  ck(expKeepAsk, "catching a species already in the box asks which to keep");
-  int t1, b1, t2, b2; uiConfirmRects(&t1, &b1, &t2, &b2);
-  exploreTap(233, (t2 + b2) / 2);           // NEW
-  dexBoxGet(dex, got);
-  ck(!expKeepAsk && got.level == btlWildMon.level, "choosing the new one replaces the old");
-  btlWild = true; btlCaught = true; battleOpen = false;
-  uint16_t keepLv = got.level;
-  makeMon(dex, keepLv + 3, false, btlWildMon);
-  render();
-  exploreTap(233, (t1 + b1) / 2);           // OLD
-  dexBoxGet(dex, got);
-  ck(got.level == keepLv, "choosing the old one keeps it");
+  PartyMon second; pcGet(pcCount() - 1, second);
+  ck(pcCount() == pcBefore + 1 && second.dex == dex && second.level == got.level + 7,
+     "catching a species again keeps BOTH, like the real games");
 
-  // --- the Pokedex page: box <-> team, never losing one
+  // --- the boxes <-> the team, through the real sheets, never losing one
+  auto total = [&](int16_t d) {
+    int n = 0;
+    for (uint16_t i = 0; i < pcCount(); i++) { PartyMon m; pcGet(i, m); n += m.dex == d; }
+    for (auto &m : party.slots) n += m.dex == d;
+    return n;
+  };
+  auto tapSheet = [&](bool fromBox, uint8_t i) {
+    int x, w; sheetBtnRect(fromBox ? 2 : 3, i, &x, &w);
+    if (fromBox) boxTap(x + w / 2, 336 + 24); else partyTap(x + w / 2, 336 + 24);
+    render();
+  };
   for (int i = 0; i < PARTY_SLOTS; i++) party.releaseAt(i);
-  ck(dexPageAction(dex) == 1 && dexPageDo(dex), "TO TEAM moves it out of the box");
-  bool inTeam = false;
-  for (int i = 0; i < PARTY_SLOTS; i++) inTeam |= party.slots[i].dex == dex;
-  ck(inTeam && !dexBoxHas(dex), "it is in the team now, and the box slot is empty");
-  ck(dexPageAction(dex) == 3 && dexPageDo(dex), "STORE HERE puts it back");
-  inTeam = false;
-  for (int i = 0; i < PARTY_SLOTS; i++) inTeam |= party.slots[i].dex == dex;
-  ck(!inTeam && dexBoxHas(dex), "out of the team and into the box again");
+  int had = total(dex);
+  uint16_t at = pcCount() - 1;
+  boxOpenFrom(true);
+  boxDetail = at + 1;
+  tapSheet(true, 0);                        // TO TEAM, with room
+  ck(party.slots[0].dex == dex && pcCount() == at, "TO TEAM moves it out of the boxes");
+  ck(boxOpen && !boxDetail, "and leaves you on the boxes");
+  boxOpen = false;
+  partyOpen = true; partyDetail = 1;
+  tapSheet(false, 1);                       // TO BOX
+  ck(party.slots[0].empty() && pcCount() == at + 1, "TO BOX puts it back, at the end");
+  ck(total(dex) == had, "nobody gained, nobody lost");
+
+  // a FULL team: TO TEAM opens the team to choose who goes to the boxes
   PartyMon filler; makeMon(16, 10, false, filler);
   for (int i = 0; i < PARTY_SLOTS; i++) party.replaceAt(i, filler);
-  for (int i = 0; i < BOX_SLOTS; i++) party.boxAdd(filler);
-  ck(dexPageAction(dex) == 2 && !dexPageDo(dex) && dexBoxHas(dex),
-     "with the team AND the box full, it stays where it is");
+  party.xp[2] = 7;
+  uint16_t n0 = pcCount();
+  boxOpenFrom(true);
+  boxDetail = n0;                           // the last one: our species
+  tapSheet(true, 0);
+  ck(!boxOpen && partyOpen && boxToTeam == n0, "with the team full, the team opens to pick a slot");
+  partyTap(78 + 150 / 2, 88 + 78 + 70 / 2);  // slot 2: left column, second row
+  render();
+  PartyMon out; uint16_t outXp = 0; pcGet(n0 - 1, out, &outXp);
+  ck(party.slots[2].dex == dex && out.dex == 16, "the two change places");
+  ck(outXp == 7, "and the one that left takes its experience with it");
+  ck(pcCount() == n0 && total(dex) == had, "still nobody gained or lost");
+  ck(boxOpen && !boxToTeam, "and you are back on the boxes");
+  boxOpen = false; partyOpen = false;
 
-  // --- the repair: a catch that reached the box but not the Pokedex (what a
+  // --- the repair: a catch that reached the boxes but not the Pokedex (what a
   // closed NVS handle left behind before 3.25) is put back at boot
   {
     int16_t lost = 0;
     for (int16_t d = 1; d <= DEX_COUNT && !lost; d++)
-      if (!pet.isRegistered(d) && !dexBoxHas(d) && wildCandidate(d)) lost = d;
+      if (!pet.isRegistered(d) && !pcHas(d) && wildCandidate(d)) lost = d;
     PartyMon m; makeMon(lost, 9, false, m);
-    dexBoxPut(m);
-    ck(dexBoxHas(lost) && !pet.isRegistered(lost), "a species in the box but not the Pokedex (the 3.24 state)");
-    dexBoxRepair();
+    pcAdd(m);
+    ck(pcHas(lost) && !pet.isRegistered(lost), "a species in the boxes but not the Pokedex (the 3.24 state)");
+    pcStartup();
     Pet again; again.begin();
     ck(pet.isRegistered(lost) && again.isRegistered(lost), "the boot repair registers it, and it is saved");
   }

@@ -17,6 +17,7 @@
 #include "Preferences.h"
 #include "pet.h"
 #include "party.h"
+#include "pcbox.h"
 #include <cstdio>
 #include <cstring>
 #include <chrono>
@@ -27,7 +28,7 @@ void FakeESP::restart(){exit(0);}
 int FakeSerial::available(){return 0;}
 String FakeSerial::readStringUntil(char){return String("");}
 void setup(); void loop(); void render();
-void partyTap(int16_t,int16_t); void boxTap(int16_t,int16_t);
+void partyTap(int16_t,int16_t); void boxTap(int16_t,int16_t); void onSwipe(int dir);
 uint8_t uiCurrentScreen();
 extern const char *const SCREEN_NAME[];
 extern uint32_t confirmUntil;
@@ -35,7 +36,10 @@ extern uint8_t dimStage;
 extern bool holdFired;
 extern Pet pet;
 extern bool partyOpen, boxOpen, movePickOpen, releaseConfirm;
-extern uint8_t partyDetail, boxDetail, boxSwapFrom, boxSel;
+extern uint8_t partyDetail; extern uint16_t boxDetail, boxToTeam;
+void boxOpenFrom(bool menu);
+void sheetBtnRect(uint8_t n, uint8_t i, int *x, int *w);
+void gridCellXY(int k, int *x, int *y);
 
 static int bad=0;
 static void ck(bool ok,const char*w){printf("%s  %s\n",ok?"PASS":"FAIL",w); if(!ok)bad++;}
@@ -44,9 +48,13 @@ static void ck(bool ok,const char*w){printf("%s  %s\n",ok?"PASS":"FAIL",w); if(!
 // a test that restates the layout drifts from it and then proves nothing.
 #define PCELL_X(i) (78 + ((i) % 2) * 160)
 #define PCELL_Y(i) (88 + ((i) / 2) * 78)
-bool monSheetBtn(int16_t,int16_t,bool);
-#define SHEET_L_X 160
-#define SHEET_R_X 320
+// a sheet button's centre, asked of the firmware: n buttons on the row, the i-th
+static int sheetX(int n, int i){ int x, w; sheetBtnRect(n, i, &x, &w); return x + w / 2; }
+#define TEAM_REVIVE  sheetX(3, 0)
+#define TEAM_TO_BOX  sheetX(3, 1)
+#define TEAM_RELEASE sheetX(3, 2)
+#define BOX_TO_TEAM  sheetX(2, 0)
+#define BOX_ADOPT    sheetX(2, 1)
 #define SHEET_BTN_Y (336 + 48/2)
 #define CONF_YES_Y (206 + 52/2)
 #define CONF_NO_Y  (268 + 52/2)
@@ -73,9 +81,9 @@ static PartyMon mon(int16_t dex, uint16_t lvl, const char *nick){
 }
 static void clearAll(){
   for(int i=0;i<PARTY_SLOTS;i++) party.releaseAt(i);
-  for(int i=0;i<BOX_SLOTS;i++) party.boxReleaseAt(i);
+  pcWipe();
   partyOpen=boxOpen=movePickOpen=releaseConfirm=false;
-  partyDetail=boxDetail=boxSwapFrom=boxSel=0;
+  partyDetail=0; boxDetail=boxToTeam=0;
 }
 
 int main(){
@@ -96,7 +104,7 @@ int main(){
     ck(partyDetail==1, "tapping a party slot opens its sheet");
     ck(!releaseConfirm, "with no confirm up yet");
 
-    partyTap(SHEET_R_X, SHEET_BTN_Y);            // RELEASE
+    partyTap(TEAM_RELEASE, SHEET_BTN_Y);            // RELEASE
     ck(releaseConfirm, "RELEASE arms a confirm");
     ck(party.count()==1, "and does NOT act on the first tap");
 
@@ -111,10 +119,10 @@ int main(){
     ck(!releaseConfirm, "NO closes the confirm");
     ck(party.count()==1 && party.slots[0].dex==25, "and keeps the creature");
 
-    partyTap(SHEET_R_X, SHEET_BTN_Y);            // RELEASE again
+    partyTap(TEAM_RELEASE, SHEET_BTN_Y);            // RELEASE again
     partyTap(CONF_X, CONF_YES_Y);                // YES
     ck(party.count()==0, "YES lets it go");
-    ck(party.boxCount()==0, "and it does NOT reappear in the box");
+    ck(pcCount()==0, "and it does NOT reappear in the boxes");
     ck(!releaseConfirm && partyDetail==0, "the sheet closes behind it");
   }
 
@@ -124,51 +132,53 @@ int main(){
     ck(q.count()==0, "the release is persisted, not only in RAM");
   }
 
-  // ---- the box sheet
+  // ---- TO BOX on the team sheet, and back with TO TEAM on the box sheet
   {
     clearAll();
-    party.box[0]=mon(133,25,"EEVEE");
-    party.boxSave();
-    partyOpen=true; boxOpen=true;
-    boxTap(PCELL_X(0)+40, PCELL_Y(0)+30);
-    ck(boxDetail==1, "tapping a box slot opens its sheet");
-    ck(party.count()==0, "rather than moving the creature on one tap");
-
-    boxTap(SHEET_R_X, SHEET_BTN_Y);              // RELEASE
-    ck(releaseConfirm, "RELEASE arms a confirm on the box sheet too");
-    boxTap(CONF_X, CONF_NO_Y);
-    ck(party.boxCount()==1, "NO keeps it");
-
-    boxTap(SHEET_R_X, SHEET_BTN_Y);
-    boxTap(CONF_X, CONF_YES_Y);
-    ck(party.boxCount()==0, "YES lets a boxed creature go");
-    ck(party.count()==0, "and it is not pushed into the party instead");
-  }
-
-  // ---- TO PARTY still works, since the sheet replaced a direct tap
-  {
-    clearAll();
-    party.box[0]=mon(143,40,"SNORLAX");
-    party.boxSave();
-    partyOpen=true; boxOpen=true;
-    boxTap(PCELL_X(0)+40, PCELL_Y(0)+30);
-    boxTap(SHEET_L_X, SHEET_BTN_Y);              // TO PARTY
-    ck(party.count()==1 && party.slots[0].dex==143, "TO PARTY withdraws it");
-    ck(party.boxCount()==0, "and the box slot is freed");
-  }
-
-  // ---- a released creature cannot leave a swap armed at an empty slot
-  {
-    clearAll();
-    party.slots[0]=mon(25,30,"PIKA");
+    party.slots[0]=mon(143,40,"SNORLAX");
     party.save();
     partyOpen=true;
     partyTap(PCELL_X(0)+40, PCELL_Y(0)+30);
-    ck(boxSwapFrom==1, "opening a sheet arms the swap side");
-    partyTap(SHEET_R_X, SHEET_BTN_Y);
-    partyTap(CONF_X, CONF_YES_Y);
-    ck(boxSwapFrom==0 && boxSel==0,
-       "and releasing disarms it, so nothing points at a creature that is gone");
+    partyTap(TEAM_TO_BOX, SHEET_BTN_Y);
+    ck(party.count()==0 && pcCount()==1 && pcHas(143), "TO BOX moves it into the boxes, on one tap");
+    ck(partyDetail==0 && !releaseConfirm, "and asks nothing: it is not a goodbye");
+
+    boxOpenFrom(false);
+    int cx, cy; gridCellXY(0, &cx, &cy);
+    boxTap(cx, cy);
+    ck(boxDetail==1, "tapping a creature in the boxes opens its sheet");
+    ck(party.count()==0, "rather than moving it on one tap");
+    boxTap(BOX_ADOPT, SHEET_BTN_Y);               // where RELEASE is on the team's
+    ck(pcCount()==1 && party.count()==0, "the box sheet has no RELEASE: that spot loses nothing");
+    boxTap(BOX_TO_TEAM, SHEET_BTN_Y);
+    ck(party.count()==1 && party.slots[0].dex==143 && pcCount()==0, "TO TEAM brings it back");
+  }
+
+  // ---- a farewell's creature, with the team full: nobody is let go
+  {
+    clearAll();
+    for (int i=0;i<PARTY_SLOTS;i++) party.slots[i]=mon(16+i,20,"");
+    party.save();
+    pet.endedMon = mon(6,73,"OLDIE");
+    pet.endedKind = CER_FAREWELL;
+    extern bool partyPick;
+    partyPick = true; partyOpen = true;
+    partyTap(233, 372 + 22);                      // the bottom button: TO BOX
+    ck(!partyPick && pet.endedKind==CER_NONE && pcCount()==1 && pcHas(6),
+       "the bottom button sends the newcomer to the boxes, where it used to let it go");
+    pet.endedMon = mon(9,73,"NEWBIE");
+    pet.endedKind = CER_FAREWELL;
+    partyPick = true; partyOpen = true;
+    partyTap(PCELL_X(1)+40, PCELL_Y(1)+30);       // slot 1 makes room
+    ck(party.slots[1].dex==9 && pcHas(17) && pcCount()==2,
+       "tapping a member puts the newcomer there and the member in the boxes");
+    // a swipe used to LET IT GO -- one stray drag and a raised creature was gone
+    pet.endedMon = mon(12,73,"FLUTTER");
+    pet.endedKind = CER_FAREWELL;
+    partyPick = true; partyOpen = true;
+    onSwipe(1);
+    ck(!partyOpen && pet.endedKind==CER_NONE && pcHas(12),
+       "a swipe away from the choice sends it to the boxes too, never lets it go");
   }
 
   // ---- BRING BACK, tapped where a thumb actually lands
@@ -187,8 +197,8 @@ int main(){
     partyOpen = true;
     partyTap(PCELL_X(0) + 40, PCELL_Y(0) + 30);
     ck(partyDetail == 1, "the sheet opens with an egg waiting");
-    partyTap(233, SHEET_BTN_Y);                  // dead centre
-    ck(pet.speciesId == 3, "BRING BACK works when tapped at the panel centre");
+    partyTap(TEAM_REVIVE, SHEET_BTN_Y);
+    ck(pet.speciesId == 3, "BRING BACK works with an egg waiting");
     ck(party.count() == 0, "and the creature leaves the party to become the pet");
   }
 

@@ -46,7 +46,7 @@ fi
 
 # arrays, not a string: the sprite dir has to reach the compiler still quoted,
 # and passing these through eval silently strips them
-CORE=("$ROOT/gbsynth.cpp" "$ROOT/pet.cpp" "$ROOT/i18n.cpp" "$ROOT/party.cpp" "$ROOT/battle.cpp" "$ROOT/link.cpp" "$ROOT/save.cpp")
+CORE=("$ROOT/gbsynth.cpp" "$ROOT/pet.cpp" "$ROOT/i18n.cpp" "$ROOT/party.cpp" "$ROOT/battle.cpp" "$ROOT/link.cpp" "$ROOT/save.cpp" "$ROOT/pcbox.cpp")
 FLAGS=(-std=c++17 -O1 -w -I"$EMU" -I"$ROOT" -DSPRITE_DIR="\"$ROOT/tools/sdcard/mons\"")
 
 # these drive setup()/loop()/render(), so they need the sketch itself
@@ -66,12 +66,12 @@ for src in "$HERE"/*_test.cpp; do
   name="$(basename "$src" .cpp)"
   [ -n "$FILTER" ] && [[ "$name" != *"$FILTER"* ]] && continue
   extra=()
-  needs_sketch "$name" && extra=("$EMU/sketch.cpp" "$EMU/host_impl.cpp" "$EMU/font.cpp" "$EMU/clock.cpp" "$ROOT/dexbox.cpp")
+  needs_sketch "$name" && extra=("$EMU/sketch.cpp" "$EMU/host_impl.cpp" "$EMU/font.cpp" "$EMU/clock.cpp")
   needs_host "$name" && extra=("$EMU/host_impl.cpp" "$EMU/font.cpp")
   srcs=("${CORE[@]}")
   standalone "$name" && srcs=("$ROOT/gbsynth.cpp")
   # every test starts from a clean NVS so one cannot leak state into the next
-  rm -f "$OUT/tamapoke.nvs" "$OUT/tamapoke-dexbox.bin"
+  rm -f "$OUT/tamapoke.nvs" "$OUT"/tamapoke-*.bin "$OUT"/tamapoke-*.tmp
   if ! g++ "${FLAGS[@]}" -o "$OUT/$name" "$src" "${srcs[@]}" "${extra[@]}" 2>"$OUT/$name.log"; then
     echo "=== $name: DID NOT COMPILE"; tail -5 "$OUT/$name.log"; fail=$((fail+1)); continue
   fi

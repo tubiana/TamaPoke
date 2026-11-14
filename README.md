@@ -3,7 +3,7 @@
 [![Flash in browser](https://img.shields.io/badge/flash-in%20browser-FF6B00?logo=googlechrome&logoColor=white)](https://tubiana.github.io/TamaPoke/web/)
 [![MakerWorld](https://img.shields.io/badge/MakerWorld-3D%20case-00AE42?logo=bambulab&logoColor=white)](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)
 ![Board](https://img.shields.io/badge/board-ESP32--S3%20round%20AMOLED-E7352C?logo=espressif&logoColor=white)
-![Firmware](https://img.shields.io/badge/firmware-v3.34-8A2BE2)
+![Firmware](https://img.shields.io/badge/firmware-v3.35-8A2BE2)
 ![Code](https://img.shields.io/badge/code-MIT-blue)
 ![Languages](https://img.shields.io/badge/languages-6-FFCB05)
 [![Stars](https://img.shields.io/github/stars/tubiana/TamaPoke?style=flat&logo=github&color=yellow)](https://github.com/tubiana/TamaPoke/stargazers)
@@ -44,13 +44,13 @@ and complete them all (shinies included).
 
 ## What this fork adds
 
-New since Dylan's v3.11, up to v3.32 (the details are in
+New since Dylan's v3.11, up to v3.35 (the details are in
 [docs/fork-changes.md](docs/fork-changes.md)):
 
-- 🧭 [**A menu of big tiles**](#a-menu-of-big-tiles): everything in two pages, trading included
+- 🧭 [**A menu of big tiles**](#a-menu-of-big-tiles): everything in three pages, trading included
 - 🗺️ [**Explore and catch**](#explore-and-catch): an island of eight places, wild creatures and a ball
 - ✨ [**Animated fights**](#animated-fights): every move drawn in its type, and a ball that wobbles
-- 📦 [**Pokédex box, adoption, experience, trading**](#pokédex-box-adoption-experience-trading)
+- 📦 [**Boxes, adoption, experience, trading**](#boxes-adoption-experience-trading)
 - 🧒 [**For kids**](#for-kids): kid mode, a daily quiz, birthday and calendar surprises, names in your language
 - 📖 [**A printable manual**](#a-printable-manual-for-kids) in English, French and German
 - 🔊 [**Cries**](#cries-build-them-yourself), which you build yourself for licence reasons
@@ -65,8 +65,9 @@ All screenshots are rendered from the real firmware by the emulator.
 |---|---|
 | <img src="docs/screens/fork/menu.png" width="240"> | <img src="docs/screens/fork/menu2.png" width="240"> |
 
-Tap the creature's name: eight big tiles on two pages (swipe or tap the dots),
-and CLOSE always at the bottom. **TRADE** pairs two boards and goes straight to
+Tap the creature's name: nine big tiles on three pages (swipe or tap the dots),
+and CLOSE always at the bottom. **BOXES** sits right after **TEAM**; the
+goodbye has the last page to itself. **TRADE** pairs two boards and goes straight to
 the trade screen, with no team to pick and no fight first.
 
 ### Explore and catch
@@ -91,14 +92,18 @@ hits. A thrown ball opens, wobbles and clicks shut. A tap skips any animation.
 faints you choose who goes next. A LAN fight ends on a win or lose scene, and a
 trade plays the swap: your Pokemon leaves in a ball and theirs drops in.
 
-### Pokédex box, adoption, experience, trading
+### Boxes, adoption, experience, trading
 
-| The Pokédex box | A banked creature |
-|---|---|
-| <img src="docs/screens/fork/dexbox.png" width="240"> | <img src="docs/screens/fork/sheetxp.png" width="240"> |
+| The boxes | One of them | The Pokédex |
+|---|---|---|
+| <img src="docs/screens/fork/boxes.png" width="240"> | <img src="docs/screens/fork/boxsheet.png" width="240"> | <img src="docs/screens/fork/dex.png" width="240"> |
 
-- Every catch is kept in the Pokédex box. You can **ADOPT** one instead of
-  hatching the egg.
+- Like the real games: every catch, trade and present goes to the **boxes**,
+  as many as you like, in the order they arrived (or by number), filtered by
+  region and type. **TO TEAM** / **TO BOX** move them; with a full team you pick
+  who swaps. You can **ADOPT** one instead of hatching the egg.
+- The **Pokédex** shows what you have: a Pokéball when one is in the boxes, a
+  green dot when one is with you. It filters by type, and has a CLOSE button.
 - Banked creatures gain **experience**, level up and evolve.
 - Two boards can **trade** over the LAN link.
 
@@ -248,7 +253,7 @@ way. Same reasoning that makes Hoenn Emerald throughout.
 |---|---|---|
 | <img src="docs/screens/dexpick.png" width="240"> | <img src="docs/screens/gallery.png" width="240"> | <img src="docs/screens/gallery2.png" width="240"> |
 
-| Trainer card | Johto badges | The box |
+| Trainer card | Johto badges | The boxes |
 |---|---|---|
 | <img src="docs/screens/player.png" width="240"> | <img src="docs/screens/player2.png" width="240"> | <img src="docs/screens/box.png" width="240"> |
 
@@ -356,10 +361,10 @@ downgrades an egg), and having the device on earns its sticker.
 | Christmas | 24–26 Dec | Ice |
 
 - **Birthday** (OPTIONS, day / month): a **present** waits on the main screen
-  all day. Tapping it puts a **shiny** in the party (or the box) -- a random
+  all day. Tapping it puts a **shiny** in the boxes -- a random
   base form from an installed region, never a legendary, preferring one missing
   from the Pokédex, at the live creature's level (5 at least). Once a year; with
-  party and box both full it stays wrapped until there is room. A 29 February
+  the boxes full it stays wrapped until there is room. A 29 February
   birthday is kept on the 28th in other years. A birthday beats any other event.
 - **Stickers** (the last page of the player card): one per event above plus the
   birthday's (which comes with its present), and milestones -- 10 / 50 / 100 /
@@ -422,13 +427,19 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
 - A **runaway does not join.** It's the one ending with a cost, and letting a
   neglected pet come back on the team would remove it. **Neither does an early
   retire** — see "Retiring a creature early" below.
-- **Letting one go for good.** Tap a party or box slot to open its sheet;
-  **RELEASE** removes that creature permanently. It asks first, every time, and
-  the creature does not fall through into the box — this is the one way to free
-  a slot without something taking its place. A box slot now opens the same sheet
-  rather than jumping straight into the party, and **TO PARTY** does that.
-- With a full party you're taken straight to the party screen to pick who the
-  newcomer replaces — or to let it go. Nothing is ever overwritten silently.
+- **The boxes** hold every creature that is not in the six (v3.35): catches,
+  trades and the birthday present land there, in the order they arrived. Up to
+  **960**, on the board's own flash -- in practice, never full. Duplicates are
+  fine. Sort by arrival or by number; show one region or one type.
+- A party member's sheet has **BRING BACK**, **TO BOX** and **RELEASE**; a
+  boxed creature's has **TO TEAM** and **ADOPT**. With a full team, **TO TEAM**
+  opens the team to pick who goes to the boxes in its place. Experience travels
+  with the creature both ways.
+- **Letting one go for good.** **RELEASE** on a party member's sheet removes
+  it permanently. It asks first, every time. Nothing is released from the boxes.
+- A **farewell** with a full party takes you to the party screen: tap who goes
+  to the boxes to make room, or **TO BOX** sends the newcomer there. Nobody is
+  let go any more, not even by a swipe.
 
 ### Exploring and catching
 Menu > **EXPLORE** opens a map of an island with eight places. Tap one, then
@@ -462,18 +473,18 @@ lava, by place).
   target (fireball, droplets, a bolt, spinning leaves, ice shards, falling
   rocks, gusts, an orb), then an impact; stars on a critical hit, a rattle on a
   super-effective one, and arrows when a stat rises or falls.
-- **The Pokedex keeps them.** A catch is registered and stored in the
-  **Pokedex box**: one creature per species, on the board's own flash (not the
-  SD card). Catching a species again asks **which one to keep**. On a species'
-  Pokedex page, **TO TEAM** moves it into the party (or the box), and **STORE
-  HERE** puts a team member of that species back.
-- **Adopt one instead of an egg.** While an egg is waiting, a species' Pokedex
-  page also offers **ADOPT** (tap twice: the first tap only asks). The caught
+- **The boxes keep them.** A catch is registered in the Pokedex and stored at
+  the end of the **boxes** (see "Your party"). Catching a species again simply
+  adds a second one. The Pokedex itself moves nothing: a Pokeball on a species
+  means one is in the boxes, a green dot that one is in the team or is the
+  creature you raise.
+- **Adopt one instead of an egg.** While an egg is waiting, a boxed creature's
+  sheet offers **ADOPT** (tap twice: the first tap only asks). The caught
   creature becomes your companion in the egg's place and starts a whole life
   at **level 1**, whatever level it was caught at: same species, same IVs and
   name, but it ages, needs care, evolves and says goodbye like anything that
   hatched. The egg is given up -- and with it the surprise, the shiny roll and
-  any legendary. It leaves the Pokedex box.
+  any legendary. It leaves the boxes.
 
 ### Experience
 - Every foe knocked out -- or caught -- gives experience to **all six of the
@@ -963,9 +974,10 @@ Menu > **TRADE** on both devices, then one taps HOST and the other JOIN: no
 team to choose and no fight first, the trade screen opens as soon as they are
 paired. (Two devices already paired for a LAN battle can still trade from the
 LAN screen's **TRADE** button.) Each player picks one creature from the party
-or the box -- never the one they are raising -- both see the two offers side by
-side, and the trade happens when **both** tap OK. Changing your offer cancels the
-other player's OK. A full party AND box cannot take anything in.
+-- never the one they are raising; bring a boxed one to the team first -- both
+see the two offers side by side, and the trade happens when **both** tap OK.
+What arrives goes to the boxes. Changing your offer cancels the other player's
+OK. Full boxes cannot take anything in.
 
 **KADABRA, MACHOKE, GRAVELER, HAUNTER, BOLDORE, GURDURR, PHANTUMP and
 PUMPKABOO evolve on arrival**, as in the games; they still evolve at level 40
@@ -1033,7 +1045,8 @@ legendary/shiny IV guarantees, which apply at hatch) ·
 `SHINY` · `NICK <x>` · `BYE` / `RUN` (farewell / runaway) · `ABANDON` (force the
 runaway-ready state) · `WIPE` (factory reset → new game) · `BEEP` (audio test) ·
 `REG` (Pokédex) · `EGGS` (simulate 20 eggs) · `GAL` (gallery) · `CAREDAY` ·
-`PARTY` / `PARTY <dex>` / `PARTY CLEAR` (inspect and fill the party) ·
+`PARTY` / `PARTY <dex>` / `PARTY CLEAR` (inspect and fill the party) · `PC`
+(what the boxes hold) ·
 `TIME <epoch>` / `RTCSET <epoch>` · `HEALTH` (uptime + heap for the soak test) ·
 `LS` / `PUT` (SD files).
 
