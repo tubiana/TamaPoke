@@ -12,7 +12,7 @@
 #include "pet.h"
 #include "party.h"
 #include "battle.h"
-#include "dexbox.h"
+#include "pcbox.h"
 #include "backs.h"
 #include <chrono>
 #include <thread>
@@ -90,7 +90,7 @@ int main(){
   pump(5);
   ck(!battleOpen && exploreOpen, "the fight closes back onto the place");
   ck(pet.isRegistered(dex), "the catch is in the Pokedex");
-  ck(dexBoxHas(dex), "...and in the Pokedex box");
+  ck(pcHas(dex), "...and in the boxes");
 
   // the fanfare ends by itself, and leaving stops whatever is playing
   printf("      music after the catch: %u\n", g_emuMusic);

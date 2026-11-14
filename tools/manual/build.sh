@@ -21,14 +21,14 @@ mkdir -p "$WORK/shots" "$ROOT/manual"
 { echo '#include "proto.h"'; cat "$ROOT/TamaPoke.ino"; } > "$EMU/sketch.cpp"
 
 g++ -std=c++17 -O1 -w -I"$EMU" -I"$ROOT" -DSPRITE_DIR='"x"' -o "$WORK/cap" \
-  "$HERE/cap.cpp" "$ROOT"/{gbsynth,pet,i18n,party,battle,link,save,dexbox}.cpp \
+  "$HERE/cap.cpp" "$ROOT"/{gbsynth,pet,i18n,party,battle,link,save,pcbox}.cpp \
   "$EMU"/{sketch,host_impl,font,clock}.cpp
 
 [ -d "$WORK/sd/mons" ] || python "$HERE/unpack_pak.py" "$ROOT/web/sprites-kanto.pak" "$WORK/sd"
 
 SCENES="region starter egg main feed sleep menu menu2 card1 card2 train player stickers party
         gympick gyms fight fightmoves win dexpick dex dexdetail quiz quizright quizdone
-        clock date options birthday explmap explscene explocean explvolcano wild caught keep dexbox sheetxp"
+        clock date options birthday explmap explscene explocean explvolcano wild caught boxes boxsheet sheetxp menu3"
 cd "$WORK"
 for s in $SCENES; do
   for l in 1 2 3; do                     # LANG_EN, LANG_FR, LANG_DE

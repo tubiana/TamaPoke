@@ -14,7 +14,7 @@ Personal, non-commercial fan project. Code MIT; sprites CC BY-NC (PMD SpriteColl
 | `dex_names.h` / `move_names.h` | GENERATED (`tools/gen_dex_names.py`, `gen_move_names.py`): species names per UI language. Read ONLY through `dexName()` / `moveName()`; the tables' own `.name` is the canonical English for the console, the LAN wire and tests, and `dexname_test` fails if a screen prints it |
 | `types.h` | Type-effectiveness helpers over the generated 18x18 chart in `dex.h` |
 | `party.cpp/.h` | The 6 retired pets banked by farewell/release (not runaway), the 18-slot box, and their EXPERIENCE (`gainXp`, kept in `xp[]`/`boxXp[]` under their own NVS keys, never inside `PartyMon`) |
-| `dexbox.cpp/.h` | The Pokedex box: one creature per species, a FILE on the board's FAT partition (809 records do not fit the 20 KB NVS, and a full NVS fails every save). Same stdio code on the board (`/ffat/`) and in the emulator |
+| `pcbox.cpp/.h` | The boxes (v3.35): every creature not in the six, a LIST in arrival order (up to `PC_MAX` 960, duplicates fine), a FILE on the board's FAT partition (it does not fit the 20 KB NVS, and a full NVS fails every save). Held in PSRAM, rewritten whole via a temp file. Same stdio code on the board (`/ffat/`) and in the emulator. `pcMigrate()` empties the two stores it replaced (the 18-slot NVS box and the 3.19-3.34 one-per-species Pokedex box file) into it at boot |
 | `calendar.h` | Dates from the RTC, the calendar events and their egg types; pure, so `calendar_test` sweeps whole years |
 | `i18n.cpp/.h` | 6-language string table (ES/EN/FR/DE/IT/PT) |
 | `audio.cpp/.h` | ES8311 codec over I2S |
@@ -292,8 +292,8 @@ On hardware, verify over the serial console (115200):
 - `BYE` / `RUN` / `ABANDON` — the three endings · `BEEP` audio · `LS` / `PUT` SD files
 - `TIME <epoch>` / `RTCSET <epoch>` — offline-progression and clock paths
 - `OUTINGS` refill the explore bar · `FULL` every need to 100 · `REG` the
-  Pokedex · `DEXBOX` the Pokedex box, flagging any species it holds that the
-  Pokedex does not (the 3.24 save bug's signature)
+  Pokedex · `PC` (or `DEXBOX`) the boxes, flagging any species they hold that
+  the Pokedex does not (the 3.24 save bug's signature)
 
 To exercise long-horizon logic in minutes, temporarily lower `PET_TICK_MS`,
 `MINUTES_PER_LEVEL` and `FAREWELL_AGE_MIN` in `pet.h`.
@@ -334,12 +334,18 @@ in a menu row because every gesture from the main screen is taken.
   the catch is re-rolled afterwards.
 - `btlAfterTurn()` is the end of every turn, a move turn or a ball turn. A ball
   that breaks is a turn: the foe acts alone and then the same rules run.
-- The Pokedex box is a file, NOT NVS. `EXPORT` (v3.27) prints it after the
-  NVS block as `IMPORTBOX` lines, one creature each with its own crc16, under
-  an `IMPORTBOX START` that says "this backup has a box" -- so an older backup
-  leaves the box alone. The final bare `IMPORT` applies the save AND the box or
-  neither; a damaged box line rejects the whole restore. `console_test`.
-  `WIPE` deletes it.
+- The boxes are a file, NOT NVS. `EXPORT` (v3.27) prints them after the
+  NVS block as `IMPORTBOX` lines in arrival order, one creature each with its
+  own crc16, under an `IMPORTBOX START` that says "this backup has boxes" -- so
+  an older backup leaves them alone. The line format is the old Pokedex box's,
+  so a 3.27-3.34 backup restores into the boxes. The final bare `IMPORT`
+  applies the save AND the boxes or neither; a damaged line rejects the whole
+  restore. `console_test`. `WIPE` deletes them.
+- The Pokedex SHOWS, it stores nothing (v3.35): a Pokeball = `pcHas()`, a green
+  dot = `dexWithYou()` (the team or the live creature). Creatures move between
+  the team and the boxes ONLY through `teamToBox()` and `boxToTeamDo()`, which
+  write the boxes FIRST (a failure duplicates, never loses) and carry the
+  experience. A new mover must go through them.
 - Pokedex TOTALS come from `dexObtainableIn()`, never `DEX_COUNT` or a region's
   span: the 19 no-art species can never be owned, and counting them made the
   Pokedex impossible to finish. `registeredCountIn()` counts the same set, so a
@@ -350,7 +356,7 @@ in a menu row because every gesture from the main screen is taken.
   creatures. Its ceiling is `Pet::xpCap()`, the best level the player RAISED.
 - Retired creatures are no longer frozen in level: they grow by experience while
   in the party. Older notes below that say "frozen at banking" predate this.
-- ADOPT (v3.22) raises a Pokedex-box creature in place of the waiting egg.
+- ADOPT (v3.22) raises a boxed creature in place of the waiting egg.
   `Pet::adoptFrom()` goes THROUGH `hatch()` and then restores the caught IVs
   and name, so an adopted life starts exactly like a hatched one (level 1,
   level-1 moves, not frozen) -- do not give it its own copy of the start of a

@@ -39,9 +39,10 @@ static void ck(bool ok,const char*w){printf("%s  %s\n",ok?"PASS":"FAIL",w); if(!
 static bool flushes(){ gfx->frameReady=false; render(); return gfx->frameReady; }
 static int sounds(){ return g_emuSfx + g_emuCries; }
 
-// from the sketch: GAL_X / GAL_Y / GAL_CELL, QUIZ_ROW_*
-#define CELL_X(c) (73 + (c) * 80 + 40)
-#define CELL_Y(r) (84 + (r) * 80 + 40)
+// from the sketch: the grid's own geometry, QUIZ_ROW_*
+void gridCellXY(int k, int *x, int *y);
+static int CELL_X(int c){ int x; gridCellXY(c, &x, nullptr); return x; }
+static int CELL_Y(int r){ int y; gridCellXY(r * 4, nullptr, &y); return y; }
 #define QROW_X 233
 #define QROW_Y(i) (256 + (i) * 52 + 23)
 

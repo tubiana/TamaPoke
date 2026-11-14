@@ -36,7 +36,7 @@
 #include "party.h"
 #include "save.h"
 #include "pet.h"
-#include "dexbox.h"
+#include "pcbox.h"
 #include "sdmon.h"
 #include "rtcbat.h"
 #include "i18n.h"
@@ -44,7 +44,7 @@
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
-#define FW_VERSION "3.34"
+#define FW_VERSION "3.35"
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   LCD_CS, LCD_SCLK, LCD_SDIO0, LCD_SDIO1, LCD_SDIO2, LCD_SDIO3);
@@ -77,18 +77,14 @@ PmdMon galleryPmd;  // sprite grande de la vista detalle de la galeria (PMD/TPK2
 // galeria pokedex
 bool galleryOpen = false;
 bool galleryDirty = false;
-// 16 to a page, and the Pokedex is browsed ONE REGION AT A TIME. Three
+// The Pokedex is browsed ONE REGION AT A TIME, narrowed by type. Three
 // generations flat is 25 pages of swiping to reach Hoenn, which is not a
 // Pokedex, it is a scroll. A vertical swipe changes region and a horizontal one
-// pages within it, so nothing is ever more than ten pages from the front.
-// ALL is deliberately not offered here -- it is the thing being replaced.
-#define GAL_PER_PAGE 16
+// pages within it. ALL is deliberately not offered here.
 #define GAL_REGIONS (REGION_COUNT - 1)          // the real regions, not ALL
 #define GAL_CELL 80                             // drawThumb centres in a box this size
 #define GAL_LO (REGIONS[galleryRegion % GAL_REGIONS].lo)
 #define GAL_HI (REGIONS[galleryRegion % GAL_REGIONS].hi)
-#define GAL_SPAN (GAL_HI - GAL_LO + 1)
-#define GAL_PAGES ((GAL_SPAN + GAL_PER_PAGE - 1) / GAL_PER_PAGE)
 uint8_t galleryRegion = 0;
 // Both the Pokedex and the gym ladder now open on a REGION CHOOSER rather than
 // dropping you into whichever region was last viewed. The vertical swipe that
@@ -97,7 +93,7 @@ uint8_t galleryRegion = 0;
 bool galleryPick = false;
 bool gymPick = false;
 uint8_t rpickPage = 0;      // the region chooser is paged; shared by all 3 modes
-int galleryPage = 0;        // GAL_PAGES paginas de GAL_PER_PAGE
+int galleryPage = 0;        // galPages() pages of GRID_PER_PAGE
 int16_t galleryDetail = 0;  // dex en vista detalle, 0 = rejilla
 
 bool screenOff = false;       // pulsacion corta del boton PWR
@@ -137,7 +133,7 @@ bool menuOpen = false;
 #define MENU_CLOSE_H 44                     // UI_TAP_MIN
 // Each item's index IS its place: page = i / 4, then left-to-right, top-down.
 enum : uint8_t { MENU_POKEDEX = 0, MENU_EXPLORE, MENU_BATTLE, MENU_TRADE,
-                 MENU_TEAM, MENU_STATS, MENU_SETTINGS, MENU_FAREWELL, MENU_ITEMS };
+                 MENU_TEAM, MENU_BOXES, MENU_STATS, MENU_SETTINGS, MENU_FAREWELL, MENU_ITEMS };
 #define MENU_PER_PAGE 4
 #define MENU_PAGES ((MENU_ITEMS + MENU_PER_PAGE - 1) / MENU_PER_PAGE)
 #define MENU_HIT_NONE -1      // inside the panel, on nothing
@@ -147,27 +143,34 @@ enum : uint8_t { MENU_POKEDEX = 0, MENU_EXPLORE, MENU_BATTLE, MENU_TRADE,
 uint8_t menuPage = 0;
 bool lanForTrade = false;   // the LAN screen was opened by TRADE: pair, then trade
 
-// Party screen. partyPick != 0 means the newcomer needs a slot: the player
-// either taps someone to replace or lets it go.
+// Party screen. partyPick means a farewell's creature needs a slot: the player
+// taps someone to send to the boxes in its place, or sends the newcomer there.
 bool partyOpen = false;
 bool partyPick = false;
 uint8_t partyDetail = 0;   // 0 = the grid, else slot + 1
-// The box, reached from the party screen. `boxSwapFrom` is the party slot
-// waiting for something to trade with, 0 when nothing is pending.
+// The boxes (pcbox.h): every creature not in the team, browsed as a grid of
+// PC_PER_PAGE with a sort and two filters. Reached from the team screen and
+// from the menu; boxFromMenu says which, so closing goes back where it came from.
 bool boxOpen = false;
+bool boxFromMenu = false;
 uint8_t boxPage = 0;
-uint8_t boxSwapFrom = 0;   // party slot + 1, armed from the party side
-uint8_t boxSel = 0;        // box slot + 1, armed from the box side
-// The box gets the same detail sheet the party has. Tapping a box slot used to
-// yank the creature into the party immediately, which is a surprising amount to
-// happen from one tap -- and left nowhere to put a RELEASE button.
-uint8_t boxDetail = 0;        // box slot + 1 whose sheet is open
-// The RELEASE confirm, on whichever sheet is up. One flag rather than two,
-// because only one sheet can be open at a time and partyDetail/boxDetail
-// already say which.
+uint8_t boxSort = 0;          // 0 = arrival, 1 = Pokedex number
+uint8_t boxRegion = 0;        // 0 = every region, else REGIONS[boxRegion - 1]
+uint8_t boxType = 0;          // 0 = every type, else T_* (1..18)
+uint16_t boxDetail = 0;       // the boxes' index + 1 whose sheet is open
+// A box creature on its way to a FULL team: the team screen opens and the
+// player taps who goes to the boxes in its place. Index + 1, 0 = none.
+uint16_t boxToTeam = 0;
+// The RELEASE confirm on the team sheet. Nothing is released from the boxes.
 bool releaseConfirm = false;
-#define BOX_PER_PAGE 6
+// ADOPT gives up the waiting egg, which cannot be undone: the first tap only
+// arms the button, a second within 3 s confirms.
+uint32_t adoptArmUntil = 0;
+// The sheet's buttons, by position (sheetBtnRect).
+enum : uint8_t { SB_REVIVE = 0, SB_TO_BOX, SB_RELEASE };   // a team member's
+enum : uint8_t { SB_TO_TEAM = 0, SB_ADOPT };               // a box creature's
 uint32_t partyBannerUntil = 0;   // "<name> joined the party!"
+bool partyBannerBox = false;     // ...or "<name> went to the boxes" (a present)
 // The birthday present on the main screen (Pet::giftReady()), and how long to
 // say there is no room for it when party and box are both full.
 #define PRESENT_X 50
@@ -293,7 +296,6 @@ bool startWildBattle(int16_t dex, uint8_t lvl, uint8_t place);
 const BackScene &placeScene(uint8_t pl, bool night);
 extern bool exploreOpen;
 extern int8_t expPlace;
-extern bool expKeepAsk;
 // the quiz (near the top) and OPTIONS draw with these, defined far below
 void drawThumb(const uint8_t *b, int x, int y, int s, bool sil);
 void drawClockBtn(int x, int y, const char *l);
@@ -307,6 +309,15 @@ void renderPlayerStickers();
 void uiConfirmRects(int *b1Top, int *b1Bot, int *b2Top, int *b2Bot);
 void renderParty();
 void renderBox();
+uint8_t sheetBtnCount(bool fromBox);
+void sheetBtnRect(uint8_t n, uint8_t i, int *x, int *w);
+bool sheetBtnLive(bool fromBox, uint8_t i, const char **lbl);
+const char *sheetBtnWhy(bool fromBox, uint8_t i);
+void boxOpenFrom(bool menu);
+void boxClose();
+int boxPages();
+int galPages();
+void pcStartup();
 void drawConfirmPanel(const char *q, const char *sub1, const char *sub2,
                       uint16_t subCol, const char *o1, uint16_t c1, uint16_t t1,
                       const char *o2, uint16_t c2, uint16_t t2);
@@ -1104,7 +1115,7 @@ void setup() {
 
   party.begin();
   pet.begin();
-  dexBoxRepair();
+  pcStartup();
   sdBegin();
   thumbs.load();
 
@@ -1628,14 +1639,14 @@ void loop() {
   }
 
   // A farewell or release just finished: the creature is waiting for a slot.
-  // With room it simply joins; with a full party the player is taken straight
-  // to the party screen to choose who it replaces, or to let it go.
+  // With room it simply joins; with a full team the player is taken straight
+  // to the team screen to choose who goes to the boxes, or to send it there.
   if (pet.endedKind != CER_NONE && !partyPick) {
-    // party first, then the box; only a full box makes it your choice
-    if (party.add(pet.endedMon) || party.boxAdd(pet.endedMon)) {
+    if (party.add(pet.endedMon)) {
       snprintf(partyBannerName, sizeof(partyBannerName), "%s",
                pet.endedMon.nick[0] ? pet.endedMon.nick : dexName(pet.endedMon.dex));
       partyBannerUntil = now + 3500;
+      partyBannerBox = false;
       pet.endedKind = CER_NONE;
       sfxPlay(SFX_MEDAL);
     } else {
@@ -1817,7 +1828,7 @@ static int hexToBytes(const String &hex, uint8_t *out, size_t cap) {
   return (int)(len / 2);
 }
 
-// The Pokedex box's half of a restore, held until the commit.
+// The boxes' half of a restore, held until the commit, in arrival order.
 struct BoxImport {
   PartyMon *recs = nullptr;
   uint16_t n = 0;
@@ -1833,8 +1844,8 @@ struct BoxImport {
     if (saveCrc16(b, body) != want) return false;
     int16_t d = (int16_t)(b[0] | (b[1] << 8));
     if (d < 1 || d > DEX_COUNT) return false;
-    if (!recs) recs = (PartyMon *)malloc(sizeof(PartyMon) * DEX_COUNT);
-    if (!recs || n >= DEX_COUNT) return false;
+    if (!recs) recs = (PartyMon *)malloc(sizeof(PartyMon) * PC_MAX);
+    if (!recs || n >= PC_MAX) return false;
     PartyMon m;
     size_t k = body - 2 < sizeof(PartyMon) ? body - 2 : sizeof(PartyMon);
     memcpy(&m, b + 2, k);
@@ -2009,14 +2020,16 @@ void handleSerial() {
       for (size_t j = i; j < i + 48 && j < n; j++) Serial.printf("%02X", buf[j]);
       Serial.println();
     }
-    // The Pokedex box is a file, not NVS, so it rides as its own lines: one
-    // creature each, with its own checksum. START says "this backup has a
-    // box", so restoring an empty one empties it, while a backup from before
-    // the box existed leaves the box alone.
+    // The boxes are a file, not NVS, so they ride as their own lines: one
+    // creature each, in arrival order, with its own checksum. START says "this
+    // backup has boxes", so restoring empty ones empties them, while a backup
+    // from before they existed leaves them alone. The line format is the one
+    // the Pokedex box used (3.27-3.34), so those backups restore into the boxes.
     Serial.println("IMPORTBOX START");
-    for (int16_t d = 1; d <= DEX_COUNT; d++) {
+    for (uint16_t i = 0; i < pcCount(); i++) {
       PartyMon m;
-      if (!dexBoxGet(d, m)) continue;
+      if (!pcGet(i, m)) continue;
+      int16_t d = m.dex;
       uint8_t rec[2 + sizeof(PartyMon) + 2];
       rec[0] = (uint8_t)d; rec[1] = (uint8_t)(d >> 8);
       memcpy(rec + 2, &m, sizeof(PartyMon));
@@ -2066,8 +2079,8 @@ void handleSerial() {
     Serial.println(ok ? "IMPORT OK" : "IMPORT REJECTED");
     inN = 0;
     if (ok && boxIn.seen) {          // the save went in: now the box, replaced whole
-      dexBoxWipe();
-      for (uint16_t i = 0; i < boxIn.n; i++) dexBoxPut(boxIn.recs[i]);
+      pcWipe();
+      for (uint16_t i = 0; i < boxIn.n; i++) pcAdd(boxIn.recs[i]);
       Serial.printf("IMPORTBOX %u\n", (unsigned)boxIn.n);
     }
     boxIn.start();
@@ -2075,7 +2088,7 @@ void handleSerial() {
     if (ok) { Serial.println("DONE"); delay(100); ESP.restart(); }
   } else if (line == "WIPE") {
     pet.factoryReset();     // borra NVS y reinicia -> partida nueva (eleccion de inicial)
-    dexBoxWipe();           // the Pokedex box is a file, not NVS: take it too
+    pcWipe();               // the boxes are a file, not NVS: take them too
     Serial.println("DONE");
     delay(100);
     ESP.restart();
@@ -2115,11 +2128,13 @@ void handleSerial() {
     pet.fullness = pet.joy = pet.energy = pet.hygiene = 100;
     pet.saveNow();
     Serial.println("DONE");
-  } else if (line == "DEXBOX") {    // what the Pokedex box holds, on the board's flash
-    if (!dexBoxReady()) Serial.println("dexbox: NOT MOUNTED");
-    Serial.printf("dexbox %u:", dexBoxCount());
-    for (int16_t d = 1; d <= DEX_COUNT; d++)
-      if (dexBoxHas(d)) Serial.printf(" %d%s", d, pet.isRegistered(d) ? "" : "(NOT IN POKEDEX)");
+  } else if (line == "DEXBOX" || line == "PC") {   // what the boxes hold, on the board's flash
+    if (!pcReady()) Serial.println("pc: NOT MOUNTED");
+    Serial.printf("pc %u:", pcCount());
+    for (uint16_t i = 0; i < pcCount(); i++) {
+      PartyMon m;
+      if (pcGet(i, m)) Serial.printf(" %d%s", m.dex, pet.isRegistered(m.dex) ? "" : "(NOT IN POKEDEX)");
+    }
     Serial.println();
     Serial.println("DONE");
   } else if (line == "REG") {
@@ -2261,11 +2276,13 @@ void onSwipeV(int dir) {
   if (playerOpen) { playerOpen = false; return; }
   if (trainOpen) { trainOpen = false; return; }
   if (movePickOpen) { movePickOpen = false; return; }
-  if (boxOpen) { boxOpen = false; boxSel = 0; return; }   // vertical backs out
+  if (boxOpen) {                                   // vertical backs out
+    if (boxDetail) boxDetail = 0; else boxClose();
+    return;
+  }
   if (partyOpen) {
     if (partyDetail) { partyDetail = 0; return; }
-    if (partyPick) { partyPick = false; pet.endedKind = CER_NONE; }
-    partyOpen = false;
+    partyLeave();
     return;
   }
   // Either minigame exits on a swipe. A swipe cannot be confused with a ball
@@ -2303,9 +2320,9 @@ void onSwipeV(int dir) {
 // A banked creature's sheet: its moves above all, since typing alone does not
 // tell you whether that Lapras still has ICE BEAM -- and in hard mode that is
 // what decides the fight.
-// The detail sheet, shared by the party and the box so the two cannot drift.
-// `fromBox` picks which action the LEFT button offers; the right one is always
-// RELEASE, which is irreversible and therefore always asks first.
+// The detail sheet, shared by the team and the boxes so the two cannot drift.
+// The team's has BRING BACK / TO BOX / RELEASE (which always asks first); the
+// boxes' has TO TEAM / ADOPT, and nothing irreversible.
 void renderMonSheet(const PartyMon &m, bool fromBox, uint16_t xp) {
   const DexEntry &d = DEX_TBL[m.dex];
   gfx->fillScreen(RGB565_BLACK);
@@ -2345,41 +2362,32 @@ void renderMonSheet(const PartyMon &m, bool fromBox, uint16_t xp) {
     gfx->print(xl);
   }
 
-  // Bringing one back is only offered while an egg is waiting. Otherwise it
-  // would silently destroy whatever creature is currently alive, and a rule the
-  // player cannot see is worse than a button they cannot press. A box creature
-  // goes to the party instead, which is always allowed if there is room.
-  bool leftOk = fromBox ? (party.firstFree() >= 0)
-                        : (pet.isEgg() && !pet.awaitingStarter());
-  const char *leftLbl = fromBox ? T(S_BOX_TAKE) : T(S_REVIVE);
-  gfx->fillRoundRect(PDET_L_X, PDET_BTN_Y, PDET_L_W, PDET_BTN_H, 10,
-                     leftOk ? UI_BAR_OK : UI_TRACK);
-  gfx->drawRoundRect(PDET_L_X, PDET_BTN_Y, PDET_L_W, PDET_BTN_H, 10, UI_INK);
-  gfx->setTextColor(leftOk ? UI_BG_DAY : 0x8410);
-  gfx->setTextSize(2);
-  gfx->setCursor(PDET_L_X + PDET_L_W / 2 - (int)strlen(leftLbl) * 6,
-                 PDET_BTN_Y + PDET_BTN_H / 2 - 8);
-  gfx->print(leftLbl);
-
-  gfx->fillRoundRect(PDET_R_X, PDET_BTN_Y, PDET_R_W, PDET_BTN_H, 10, UI_BAR_BAD);
-  gfx->drawRoundRect(PDET_R_X, PDET_BTN_Y, PDET_R_W, PDET_BTN_H, 10, UI_INK);
-  gfx->setTextColor(UI_WHITE);
-  gfx->setTextSize(1);
-  gfx->setCursor(PDET_R_X + PDET_R_W / 2 - (int)strlen(T(S_RELEASE_BTN)) * 3,
-                 PDET_BTN_Y + PDET_BTN_H / 2 - 4);
-  gfx->print(T(S_RELEASE_BTN));
-
-  // WHY the button is dead, ABOVE it and in a colour that can be read.
-  //
-  // This used to sit BELOW the buttons in UI_TRACK -- pale beige on a pale
-  // background, at the smallest text size, eight pixels above "tap: back". It
-  // was reported as "every time I hit bring back it just buzzes": the refusal
-  // was correct (reviving would destroy the creature you are raising) but the
-  // reason was invisible, so the button read as broken rather than disabled.
-  // Above the button there is clear space between it and the stat line, and
-  // that is also where the eye is already travelling.
-  if (!leftOk) {
-    const char *why = fromBox ? T(S_PARTY_FULL) : T(S_REVIVE_EGG);
+  // A dead button is drawn grey and says WHY above the row, in a colour that
+  // can be read. That used to sit below the buttons in pale beige, and "every
+  // time I hit bring back it just buzzes" was the report: the refusal was right
+  // (reviving would destroy the creature you are raising) but invisible, so the
+  // button read as broken rather than disabled.
+  uint8_t nb = sheetBtnCount(fromBox);
+  const char *why = nullptr;
+  for (uint8_t i = 0; i < nb; i++) {
+    const char *lbl;
+    bool live = sheetBtnLive(fromBox, i, &lbl);
+    uint16_t bg = !live ? UI_TRACK
+                : (!fromBox && i == SB_RELEASE) ? UI_BAR_BAD
+                : (fromBox && i == SB_ADOPT) ? (millis() < adoptArmUntil ? UI_BAR_BAD : UI_BAR_WARN)
+                : UI_BAR_OK;
+    if (!live && !why) why = sheetBtnWhy(fromBox, i);
+    int bx, bw;
+    sheetBtnRect(nb, i, &bx, &bw);
+    gfx->fillRoundRect(bx, PDET_BTN_Y, bw, PDET_BTN_H, 10, bg);
+    gfx->drawRoundRect(bx, PDET_BTN_Y, bw, PDET_BTN_H, 10, UI_INK);
+    gfx->setTextColor(live ? UI_WHITE : 0x8410);
+    int ts = (int)strlen(lbl) * 12 <= bw - 12 ? 2 : 1;
+    gfx->setTextSize(ts);
+    gfx->setCursor(bx + bw / 2 - (int)strlen(lbl) * 3 * ts, PDET_BTN_Y + PDET_BTN_H / 2 - 4 * ts);
+    gfx->print(lbl);
+  }
+  if (why) {
     gfx->setTextColor(UI_BAR_WARN);
     gfx->setTextSize(1);
     gfx->setCursor(CX - (int)strlen(why) * 3, PDET_BTN_Y - 14);
@@ -2416,13 +2424,14 @@ void renderPartyDetail() {
 }
 
 void renderBoxDetail() {
-  if (party.box[boxDetail - 1].empty()) {
+  PartyMon m;
+  uint16_t xp = 0;
+  if (!pcGet(boxDetail - 1, m, &xp)) {   // gone (adopted): back to the grid, which flushes
     boxDetail = 0;
-    releaseConfirm = false;
     renderBox();
     return;
   }
-  renderMonSheet(party.box[boxDetail - 1], true, party.boxXp[boxDetail - 1]);
+  renderMonSheet(m, true, xp);
 }
 
 // The two buttons' hit areas, so a test can prove they do not overlap without
@@ -2474,14 +2483,58 @@ void partyButtonRects(int *boxTop, int *boxBot, int *closeTop, int *closeBot) {
   if (closeBot) *closeBot = PARTYCLOSE_Y + PARTYCLOSE_H;
 }
 
-// Which of the detail sheet's two buttons a tap landed on. One answer for the
-// party and the box, off the same PDET_* constants the sheet is DRAWN with, so
-// the graphic and the hit area cannot drift apart.
-bool monSheetBtn(int16_t x, int16_t y, bool left) {
-  if (y < PDET_BTN_Y || y > PDET_BTN_Y + PDET_BTN_H) return false;
-  int x0 = left ? PDET_L_X : PDET_R_X;
-  int w = left ? PDET_L_W : PDET_R_W;
-  return x >= x0 && x <= x0 + w;
+// The sheet's buttons: one row, laid out by count, asked by the draw, the tap
+// and the tests alike so the graphic and the hit area cannot drift apart.
+uint8_t sheetBtnCount(bool fromBox) { return fromBox ? 2 : 3; }
+
+// Two buttons keep the old ASYMMETRIC pair (a wide one, then a narrow one):
+// centred, the gap between them sat on the panel's centre line, the one spot a
+// thumb aims at, and "the button is not working" was the report. Three share
+// the row evenly, which puts the middle one on the centre.
+void sheetBtnRect(uint8_t n, uint8_t i, int *x, int *w) {
+  if (n == 2) {
+    if (x) *x = i ? PDET_R_X : PDET_L_X;
+    if (w) *w = i ? PDET_R_W : PDET_L_W;
+    return;
+  }
+  const int gap = 12, span = PDET_R_X + PDET_R_W - PDET_L_X;   // 70..386, inside the arc
+  int bw = (span - gap * (n - 1)) / n;
+  if (x) *x = PDET_L_X + i * (bw + gap);
+  if (w) *w = bw;
+}
+
+// Whether button i can be pressed now, and its label.
+bool sheetBtnLive(bool fromBox, uint8_t i, const char **lbl) {
+  bool eggWaits = pet.isEgg() && !pet.awaitingStarter();
+  const char *l = "";
+  bool live = true;
+  if (fromBox) {
+    if (i == SB_TO_TEAM) { l = T(S_TO_TEAM); }
+    else { l = millis() < adoptArmUntil ? T(S_ADOPT_SURE) : T(S_ADOPT); live = eggWaits; }
+  } else {
+    if (i == SB_REVIVE) { l = T(S_REVIVE); live = eggWaits; }
+    else if (i == SB_TO_BOX) { l = T(S_TO_BOX); live = pcReady() && pcCount() < PC_MAX; }
+    else l = T(S_RELEASE_BTN);
+  }
+  if (lbl) *lbl = l;
+  return live;
+}
+
+const char *sheetBtnWhy(bool fromBox, uint8_t i) {
+  if (!fromBox && i == SB_TO_BOX) return T(S_GIFT_FULL);
+  return T(S_REVIVE_EGG);   // BRING BACK and ADOPT both need the egg
+}
+
+// Which button a tap landed on, or -1.
+int sheetBtnAt(bool fromBox, int16_t x, int16_t y) {
+  if (y < PDET_BTN_Y || y > PDET_BTN_Y + PDET_BTN_H) return -1;
+  uint8_t n = sheetBtnCount(fromBox);
+  for (uint8_t i = 0; i < n; i++) {
+    int bx, bw;
+    sheetBtnRect(n, i, &bx, &bw);
+    if (x >= bx && x <= bx + bw) return i;
+  }
+  return -1;
 }
 
 // YES / NO on the release confirm. Returns true when the tap was consumed. The
@@ -2489,18 +2542,14 @@ bool monSheetBtn(int16_t x, int16_t y, bool left) {
 // through to what is drawn underneath is precisely how an irreversible action
 // gets triggered by a fumbled tap, which is the shape CLAUDE.md section 4 keeps
 // warning about.
-bool monSheetConfirmTap(int16_t x, int16_t y, bool fromBox) {
+bool monSheetConfirmTap(int16_t x, int16_t y) {
   int c1t, c1b, c2t, c2b;
   uiConfirmRects(&c1t, &c1b, &c2t, &c2b);
   if (x < CONFIRM_BTN_X || x > CONFIRM_BTN_X + CONFIRM_BTN_W) return false;
   if (y >= c1t && y <= c1b) {            // YES -- and it does not come back
-    cryPlay(fromBox ? party.box[boxDetail - 1].dex : party.slots[partyDetail - 1].dex);
-    if (fromBox) { party.boxReleaseAt(boxDetail - 1); boxDetail = 0; }
-    else { party.releaseAt(partyDetail - 1); partyDetail = 0; }
-    // A half-finished swap named a slot that may now be empty, so disarm both
-    // sides rather than leaving one pointing at a creature that is gone.
-    boxSwapFrom = 0;
-    boxSel = 0;
+    cryPlay(party.slots[partyDetail - 1].dex);
+    party.releaseAt(partyDetail - 1);
+    partyDetail = 0;
     releaseConfirm = false;
     sfxPlay(SFX_BYE);
     return true;
@@ -2513,8 +2562,42 @@ bool monSheetConfirmTap(int16_t x, int16_t y, bool fromBox) {
   return false;
 }
 
+// Team slot -> the end of the boxes. Stored FIRST, so a failed write leaves it
+// where it was rather than nowhere.
+bool teamToBox(uint8_t slot) {
+  if (slot >= PARTY_SLOTS || party.slots[slot].empty()) return false;
+  if (!pcAdd(party.slots[slot], party.xp[slot])) return false;
+  party.releaseAt(slot);
+  return true;
+}
+
+// Box creature i -> the team: into a free slot, or in place of team slot
+// `slot` when one is given, which then takes the box creature's place in the
+// boxes. The boxes are written first: a failure between the two writes leaves
+// a creature in both places, never in neither.
+bool boxToTeamDo(uint16_t i, int slot) {
+  PartyMon m;
+  uint16_t xp = 0;
+  if (!pcGet(i, m, &xp)) return false;
+  if (slot < 0) {
+    int f = party.firstFree();
+    if (f < 0) return false;
+    if (!pcTake(i)) return false;
+    party.replaceAt((uint8_t)f, m);
+    party.xp[f] = xp;
+    party.save();
+    return true;
+  }
+  if (slot >= PARTY_SLOTS) return false;
+  if (party.slots[slot].empty()) return boxToTeamDo(i, -1);
+  if (!pcSet(i, party.slots[slot], party.xp[slot])) return false;
+  party.replaceAt((uint8_t)slot, m);
+  party.xp[slot] = xp;
+  party.save();
+  return true;
+}
+
 void partyTap(int16_t x, int16_t y) {
-  if (boxOpen) { boxTap(x, y); return; }
   // The SHEET IS CHECKED FIRST, and that is not cosmetic ordering. It covers the
   // whole screen, and its RELEASE button (x240..370, y336..384) lands inside the
   // BOX button's hit area (x138..328, y312..372) below -- so with BOX tested
@@ -2523,20 +2606,24 @@ void partyTap(int16_t x, int16_t y) {
   if (partyDetail) {
     // The confirm is modal: while it is up nothing else on the sheet responds,
     // or a miss on YES would fall through to the move rows underneath it.
-    if (releaseConfirm) { monSheetConfirmTap(x, y, false); return; }
-    if (monSheetBtn(x, y, true)) {           // BRING BACK
-      if (!pet.isEgg() || pet.awaitingStarter()) { sfxPlay(SFX_DENY); return; }
-      pet.reviveFrom(party.slots[partyDetail - 1]);
-      party.releaseAt(partyDetail - 1);      // it is alive now, not banked
-      partyDetail = 0;
-      boxSwapFrom = 0;
-      partyOpen = false;
-      sfxPlay(SFX_HATCH);
-      return;
-    }
-    if (monSheetBtn(x, y, false)) {          // RELEASE -- ask first, always
-      releaseConfirm = true;
-      sfxPlay(SFX_TAP);
+    if (releaseConfirm) { monSheetConfirmTap(x, y); return; }
+    int b = sheetBtnAt(false, x, y);
+    if (b >= 0) {
+      if (!sheetBtnLive(false, (uint8_t)b, nullptr)) { sfxPlay(SFX_DENY); return; }
+      if (b == SB_REVIVE) {
+        pet.reviveFrom(party.slots[partyDetail - 1]);
+        party.releaseAt(partyDetail - 1);    // it is alive now, not banked
+        partyDetail = 0;
+        partyOpen = false;
+        sfxPlay(SFX_HATCH);
+      } else if (b == SB_TO_BOX) {
+        if (!teamToBox(partyDetail - 1)) { sfxPlay(SFX_DENY); return; }
+        partyDetail = 0;
+        sfxPlay(SFX_MEDAL);
+      } else {                               // RELEASE -- ask first, always
+        releaseConfirm = true;
+        sfxPlay(SFX_TAP);
+      }
       return;
     }
     for (int i = 0; i < MOVE_SLOTS; i++) {   // tap a move to change it
@@ -2554,57 +2641,72 @@ void partyTap(int16_t x, int16_t y) {
     sfxPlay(SFX_TAP);
     return;
   }
-  if (!partyPick && y >= BOXBTN_Y - BOXBTN_PAD && y <= BOXBTN_Y + BOXBTN_H + BOXBTN_PAD &&
+  bool picking = partyPick || boxToTeam;
+  if (!picking && y >= BOXBTN_Y - BOXBTN_PAD && y <= BOXBTN_Y + BOXBTN_H + BOXBTN_PAD &&
       x >= BOXBTN_X - BOXBTN_PAD && x <= BOXBTN_X + BOXBTN_W + BOXBTN_PAD) {
-    boxOpen = true;                  // open the box, nothing picked yet
-    boxPage = 0;
-    boxSwapFrom = 0;
+    boxOpenFrom(false);
     sfxPlay(SFX_TAP);
     return;
   }
-  // exit button, and the top band, both always work
-  if ((y >= 372 && y <= 416 && x >= 133 && x <= 333) || y < 34) {
-    if (partyPick) {                 // declined the swap: the pet is let go
+  // the bottom button, and the top band, both always work
+  if ((y >= PARTYCLOSE_Y && y <= PARTYCLOSE_Y + PARTYCLOSE_H && x >= PARTYCLOSE_X &&
+       x <= PARTYCLOSE_X + PARTYCLOSE_W) || y < 34) {
+    if (partyPick) {                 // the newcomer goes to the boxes instead
+      if (!pcAdd(pet.endedMon)) { sfxPlay(SFX_DENY); return; }
       partyPick = false;
       pet.endedKind = CER_NONE;
-    }
+      sfxPlay(SFX_MEDAL);
+    } else if (boxToTeam) {          // changed their mind: back to the boxes
+      boxToTeam = 0;
+      boxOpen = true;
+      sfxPlay(SFX_TAP);
+      return;
+    } else sfxPlay(SFX_TAP);
     partyOpen = false;
-    sfxPlay(SFX_TAP);
     return;
   }
   for (int i = 0; i < PARTY_SLOTS; i++) {
     int cx0 = PARTY_GRID_X + (i % 2) * (PARTY_CELL_W + 10);
     int cy0 = PARTY_GRID_Y + (i / 2) * (PARTY_CELL_H + 8);
     if (x < cx0 || x > cx0 + PARTY_CELL_W || y < cy0 || y > cy0 + PARTY_CELL_H) continue;
-    if (boxSel) {                    // a box creature is waiting for a slot
-      party.swapPartyBox(i, boxSel - 1);
-      boxSel = 0;
+    if (boxToTeam) {                 // this one goes to the boxes in its place
+      if (!boxToTeamDo(boxToTeam - 1, i)) { sfxPlay(SFX_DENY); return; }
+      boxToTeam = 0;
+      boxOpen = true;                // back where the player came from
       sfxPlay(SFX_MEDAL);
       return;
     }
-    if (!partyPick) {
-      if (boxSwapFrom == i + 1) {    // tapped again: take it to the box
-        boxOpen = true;
-        boxPage = 0;
-        sfxPlay(SFX_TAP);
-        return;
-      }
-      if (party.slots[i].empty()) { boxSwapFrom = i + 1; sfxPlay(SFX_TAP); return; }
-      partyDetail = i + 1;
-      boxSwapFrom = i + 1;           // armed, in case the box is opened next
-      sfxPlay(SFX_TAP);
+    if (partyPick) {                 // this one goes to the boxes, the newcomer joins
+      if (!party.slots[i].empty() && !teamToBox((uint8_t)i)) { sfxPlay(SFX_DENY); return; }
+      party.replaceAt(i, pet.endedMon);
+      snprintf(partyBannerName, sizeof(partyBannerName), "%s",
+               pet.endedMon.nick[0] ? pet.endedMon.nick : dexName(pet.endedMon.dex));
+      partyBannerUntil = millis() + 3500;
+      partyBannerBox = false;
+      pet.endedKind = CER_NONE;
+      partyPick = false;
+      partyOpen = false;
+      sfxPlay(SFX_MEDAL);
       return;
     }
-    party.replaceAt(i, pet.endedMon);
-    snprintf(partyBannerName, sizeof(partyBannerName), "%s",
-             pet.endedMon.nick[0] ? pet.endedMon.nick : dexName(pet.endedMon.dex));
-    partyBannerUntil = millis() + 3500;
-    pet.endedKind = CER_NONE;
-    partyPick = false;
-    partyOpen = false;
-    sfxPlay(SFX_MEDAL);
+    if (party.slots[i].empty()) { sfxPlay(SFX_DENY); return; }
+    partyDetail = i + 1;
+    sfxPlay(SFX_TAP);
     return;
   }
+}
+
+// Leaving the team screen by a swipe. A farewell's creature waiting for a slot
+// goes to the boxes -- it used to be let go, which a stray swipe should never
+// do -- and a box creature on its way here goes back to the boxes.
+void partyLeave() {
+  if (boxToTeam) { boxToTeam = 0; boxOpen = true; return; }
+  if (partyPick) {
+    if (!pcAdd(pet.endedMon)) return;   // nowhere to keep it: the choice stays up
+    partyPick = false;
+    pet.endedKind = CER_NONE;
+  }
+  partyOpen = false;
 }
 
 // deslizar: dir +1 = hacia la derecha
@@ -2658,17 +2760,15 @@ void onSwipe(int dir) {
     else movePickPage = (uint8_t)p;
     return;
   }
-  if (boxOpen) {   // horizontal pages the box, as every other paged screen
-    uint8_t pages = BOX_SLOTS / BOX_PER_PAGE;
+  if (boxOpen) {   // horizontal pages the boxes; off either end it stays put
+    if (boxDetail) { boxDetail = 0; return; }
     int p = (int)boxPage + (dir > 0 ? -1 : 1);
-    if (p < 0 || p >= pages) { boxOpen = false; boxSel = 0; }
-    else boxPage = (uint8_t)p;
+    if (p >= 0 && p < boxPages()) { boxPage = (uint8_t)p; sfxPlay(SFX_TAP); }
     return;
   }
   if (partyOpen) {
     if (partyDetail) { partyDetail = 0; return; }
-    if (partyPick) { partyPick = false; pet.endedKind = CER_NONE; }
-    partyOpen = false;
+    partyLeave();
     return;
   }
   if (gameOpen) { leaveGame(); return; }   // swipe out, keeping what you earned
@@ -2708,7 +2808,7 @@ void onSwipe(int dir) {
     galleryPmd.unload();
     return;
   }
-  if (np > GAL_PAGES - 1) np = GAL_PAGES - 1;
+  if (np > galPages() - 1) np = galPages() - 1;
   if (np != galleryPage) {
     galleryPage = np;
     galleryDirty = true;
@@ -2892,6 +2992,10 @@ void onTap(int16_t x, int16_t y) {
     movePickOpen = false;   // tap anywhere else = back to the moves page
     return;
   }
+  if (boxOpen) {
+    boxTap(x, y);
+    return;
+  }
   if (partyOpen) {
     partyTap(x, y);
     return;
@@ -2996,10 +3100,11 @@ void onTap(int16_t x, int16_t y) {
     int16_t d = pet.openGift();
     if (d) {
       snprintf(partyBannerName, sizeof(partyBannerName), "%s", dexName(d));
-      partyBannerUntil = millis() + 4000;     // "<name> joined the party!"
+      partyBannerUntil = millis() + 4000;     // "<name> went to the boxes"
+      partyBannerBox = true;
       cryPlay(d);
     } else {
-      giftFullUntil = millis() + 3000;        // party and box are both full
+      giftFullUntil = millis() + 3000;        // the boxes are full
       sfxPlay(SFX_DENY);
     }
     return;
@@ -3234,7 +3339,8 @@ uint8_t uiCurrentScreen() {
   if (quizOpen) return SCR_QUIZ;     // drawn over the Pokedex chooser it came from
   if (galleryOpen) return galleryPick ? SCR_DEXPICK : SCR_GALLERY;
   if (movePickOpen) return SCR_MOVEPICK;
-  if (partyOpen) return boxOpen ? SCR_BOX : SCR_PARTY;
+  if (boxOpen) return SCR_BOX;
+  if (partyOpen) return SCR_PARTY;
   if (gameOpen || sackOpen || spdOpen) return SCR_GAME;
   if (trainOpen) return SCR_TRAIN;
   if (kbOpen) return SCR_KEYBOARD;
@@ -3310,11 +3416,13 @@ void render() {
     renderMovePick();
     return;
   }
+  if (boxOpen) {
+    if (boxDetail) renderBoxDetail();
+    else renderBox();
+    return;
+  }
   if (partyOpen) {
-    if (boxOpen) {
-      if (boxDetail) renderBoxDetail();
-      else renderBox();
-    } else if (partyDetail) renderPartyDetail();
+    if (partyDetail) renderPartyDetail();
     else renderParty();
     return;
   }
@@ -3502,7 +3610,7 @@ void render() {
       partyBannerUntil = 0;
     } else {
       char b[40];
-      snprintf(b, sizeof(b), T(S_PARTY_JOINED), partyBannerName);
+      snprintf(b, sizeof(b), partyBannerBox ? T(S_STORED_FMT) : T(S_PARTY_JOINED), partyBannerName);
       gfx->fillRoundRect(53, 176, 360, 74, 16, UI_BAR_OK);
       gfx->drawRoundRect(53, 176, 360, 74, 16, UI_INK);
       gfx->setTextColor(UI_WHITE);
@@ -6379,7 +6487,7 @@ void renderLan() {
 // The protocol's half (who holds what, when) is in link.h; this is the
 // screen, and the one place a trade touches the party: tradePoll().
 
-int8_t tradeSrc = -1;            // what we offered: 0..5 party, 6.. box
+int8_t tradeSrc = -1;            // what we offered: its team slot
 // The swap, played when theirs arrives: ours leaves in a ball, theirs drops in
 // and opens, and an evolution on arrival flickers between its two forms.
 // Purely drawn: the trade itself is already decided by then (tradePoll).
@@ -6395,24 +6503,23 @@ char tradeMsg[48] = "";
 #define TRADE_BTN_Y 300
 #define TRADE_BTN_H 46
 
-// Who can be offered: everyone in the party, then the box. Never the live
-// creature -- it is alive, not a record.
+// Who can be offered: the team, as in the real games -- a box creature is
+// brought to the team first. Never the live creature: it is alive, not a record.
 uint8_t tradeCands(int8_t *out) {
   uint8_t n = 0;
   for (int i = 0; i < PARTY_SLOTS; i++) if (!party.slots[i].empty()) out[n++] = (int8_t)i;
-  for (int i = 0; i < BOX_SLOTS; i++) if (!party.box[i].empty()) out[n++] = (int8_t)(PARTY_SLOTS + i);
   return n;
 }
 static PartyMon *tradeMonAt(int8_t src) {
-  if (src < 0) return nullptr;
-  return src < PARTY_SLOTS ? &party.slots[src] : &party.box[src - PARTY_SLOTS];
+  if (src < 0 || src >= PARTY_SLOTS) return nullptr;
+  return &party.slots[src];
 }
 uint8_t tradePages() {
-  int8_t c[PARTY_SLOTS + BOX_SLOTS];
+  int8_t c[PARTY_SLOTS];
   uint8_t n = tradeCands(c);
   return n ? (uint8_t)((n + TRADE_PER_PAGE - 1) / TRADE_PER_PAGE) : 1;
 }
-static bool tradeRoom() { return party.firstFree() >= 0 || party.boxFirstFree() >= 0; }
+static bool tradeRoom() { return pcReady() && pcCount() < PC_MAX; }
 
 void tradeOpenScreen() {
   lan.tradeReset();
@@ -6435,8 +6542,7 @@ void tradeClose() {
 
 // Runs every pass the link is up, not only while the trade screen shows, so a
 // deal finishes even if the player has walked away from it.
-//   1. theirs arrived: store it (evolving if it trade-evolves), into the
-//      Pokedex, the party or else the box;
+//   1. theirs arrived: store it (evolving if it trade-evolves) in the boxes;
 //   2. they have stored ours: only now is ours given up.
 // That order is the "never lose a creature" rule -- see link.h.
 void tradePoll() {
@@ -6446,7 +6552,7 @@ void tradePoll() {
     int16_t from = m.dex, evo = tradeEvolution(m.dex);
     pet.registerCaught(from, m.shiny);
     if (evo) { m.dex = evo; pet.registerCaught(evo, m.shiny); }
-    tradeStored = party.add(m) || party.boxAdd(m);
+    tradeStored = pcAdd(m);      // into the boxes, like a catch
     tradeAnimT0 = millis();
     tradeAnimGive = lan.tMine.dex;
     tradeAnimFrom = from;
@@ -6460,10 +6566,7 @@ void tradePoll() {
   if (lan.tPhase == 1 && lan.tPeerDone && tradeStored) {
     PartyMon *mine = tradeMonAt(tradeSrc);
     // the record we offered, still where it was: released, and the deal is done
-    if (mine && mine->dex == lan.tMine.dex) {
-      if (tradeSrc < PARTY_SLOTS) party.releaseAt((uint8_t)tradeSrc);
-      else party.boxReleaseAt((uint8_t)(tradeSrc - PARTY_SLOTS));
-    }
+    if (mine && mine->dex == lan.tMine.dex) party.releaseAt((uint8_t)tradeSrc);
     Serial.printf("trade: gave %s (dex %d)\n", DEX_TBL[lan.tMine.dex].name, lan.tMine.dex);
     lan.tPhase = 2;
     tradeSrc = -1;
@@ -6588,7 +6691,7 @@ void renderTrade() {
   }
 
   if (tradePicking) {
-    int8_t c[PARTY_SLOTS + BOX_SLOTS];
+    int8_t c[PARTY_SLOTS];
     uint8_t n = tradeCands(c);
     const char *hint = n ? T(S_TRADE_PICK) : T(S_TRADE_NONE);
     gfx->setTextColor(UI_INK);
@@ -6633,7 +6736,7 @@ void renderTrade() {
     const char *st = "";
     uint16_t sc = UI_INK;
     if (lan.tPhase) st = tradeMsg;
-    else if (!tradeRoom()) { st = T(S_PARTY_FULL); sc = UI_BAR_BAD; }
+    else if (!tradeRoom()) { st = T(S_GIFT_FULL); sc = UI_BAR_BAD; }
     else if (lan.tIAccepted) st = T(S_TRADE_WAIT);
     else if (lan.tPeerAccepted) { st = T(S_TRADE_THEYOK); sc = UI_BAR_OK; }
     gfx->setTextColor(sc);
@@ -6658,7 +6761,7 @@ void tradeTap(int16_t x, int16_t y) {
   if (tradeAnimating()) { tradeAnimT0 = 0; return; }   // a tap skips the swap
   if (y > 370) { sfxPlay(SFX_TAP); tradeClose(); return; }      // back
   if (tradePicking) {
-    int8_t c[PARTY_SLOTS + BOX_SLOTS];
+    int8_t c[PARTY_SLOTS];
     uint8_t n = tradeCands(c);
     for (uint8_t i = 0; i < TRADE_PER_PAGE; i++) {
       uint8_t k = tradePage * TRADE_PER_PAGE + i;
@@ -6787,8 +6890,7 @@ void lanTap(int16_t x, int16_t y) {
 // place's scene, where hiding spots stir one at a time. Tapping the one that
 // moves spends an outing (pet.expSpend) and meets whoever lives there
 // (pet.rollWild): usually a wild fight, sometimes it takes fright and is gone.
-// A caught creature goes to the POKEDEX BOX (dexbox.h), one per species; a
-// species already there asks which of the two to keep.
+// A caught creature goes to the boxes (pcbox.h), like in the real games.
 
 bool exploreOpen = false;
 int8_t expPlace = -1;            // -1 = the map, else PL_*
@@ -6796,7 +6898,6 @@ uint8_t expActive = 0xFF;        // the spot that is stirring
 uint32_t expActiveUntil = 0, expNextAt = 0;
 char expMsg[48] = "";
 uint32_t expMsgUntil = 0;
-bool expKeepAsk = false;         // a catch of a species the box already holds
 PartyMon expCatch;
 
 #define EXP_SPOTS 5
@@ -6850,7 +6951,6 @@ static void expSay(const char *fmt, ...) {
 void openExplore() {
   exploreOpen = true;
   expPlace = -1;
-  expKeepAsk = false;
   expMsgUntil = 0;
 }
 
@@ -7028,15 +7128,6 @@ static void renderExploreScene() {
   gfx->setCursor(CX - (int)strlen(T(S_BACK)) * 6, EXP_BACK_Y + 15);
   gfx->print(T(S_BACK));
 
-  if (expKeepAsk) {
-    char q[40], o[20], n[20];
-    snprintf(q, sizeof(q), T(S_KEEP_Q_FMT), dexName(expCatch.dex));
-    PartyMon old;
-    dexBoxGet(expCatch.dex, old);
-    snprintf(o, sizeof(o), T(S_KEEP_OLD_FMT), (unsigned)old.level);
-    snprintf(n, sizeof(n), T(S_KEEP_NEW_FMT), (unsigned)expCatch.level);
-    drawConfirmPanel(q, nullptr, nullptr, UI_INK, o, UI_TRACK, UI_INK, n, UI_BAR_OK, UI_WHITE);
-  }
   gfx->flush();
 }
 
@@ -7056,24 +7147,13 @@ void exploreAfterBattle() {
   pet.registerCaught(expCatch.dex, expCatch.shiny);
   // Said on the console every time, because "it was not in the Pokedex" is not
   // something anyone can act on without knowing which of these happened.
-  if (!dexBoxReady()) {
-    // no storage: the old way, the team then the box, or it cannot be kept
-    bool kept = party.add(expCatch) || party.boxAdd(expCatch);
-    if (!kept) expSay("%s", T(S_GIFT_FULL));
-    const char *where = kept ? "went to the party/box" : "NOT KEPT";
-    Serial.printf("catch: %s (dex %d) -- Pokedex box NOT mounted, %s\n", DEX_TBL[expCatch.dex].name, expCatch.dex, where);
-    return;
-  }
-  if (dexBoxHas(expCatch.dex)) {
-    expKeepAsk = true;
-    Serial.printf("catch: %s (dex %d) -- already in the box, asking\n", DEX_TBL[expCatch.dex].name, expCatch.dex);
-    return;
-  }
-  bool put = dexBoxPut(expCatch);
-  unsigned lv = expCatch.level, n = dexBoxCount();
-  Serial.printf("catch: %s (dex %d) lv %u -- Pokedex box %s (%u stored)\n", DEX_TBL[expCatch.dex].name, expCatch.dex, lv, put ? "ok" : "WRITE FAILED", n);
-  if (!put && (party.add(expCatch) || party.boxAdd(expCatch))) return;   // never lose a catch
-  expSay(T(S_STORED_FMT), dexName(expCatch.dex));
+  bool put = pcAdd(expCatch);
+  bool kept = put || party.add(expCatch);   // no storage: the team, or it cannot be kept
+  Serial.printf("catch: %s (dex %d) lv %u -- %s (%u in the boxes)\n", DEX_TBL[expCatch.dex].name,
+                expCatch.dex, (unsigned)expCatch.level,
+                put ? "boxes" : kept ? "boxes FAILED, went to the team" : "NOT KEPT", (unsigned)pcCount());
+  if (!kept) expSay("%s", T(S_GIFT_FULL));
+  else expSay(T(S_STORED_FMT), dexName(expCatch.dex));
 }
 
 static void exploreEncounter() {
@@ -7094,21 +7174,6 @@ static void exploreEncounter() {
 }
 
 void exploreTap(int16_t x, int16_t y) {
-  if (expKeepAsk) {               // modal: nothing behind it answers
-    int c1t, c1b, c2t, c2b;
-    uiConfirmRects(&c1t, &c1b, &c2t, &c2b);
-    if (x < CONFIRM_BTN_X || x > CONFIRM_BTN_X + CONFIRM_BTN_W) return;
-    if (y >= c2t && y <= c2b) {   // the NEW one replaces the old
-      dexBoxPut(expCatch);
-      expKeepAsk = false;
-      sfxPlay(SFX_TAP);
-      expSay(T(S_STORED_FMT), dexName(expCatch.dex));
-    } else if (y >= c1t && y <= c1b) {   // keep the old; the new one goes free
-      expKeepAsk = false;
-      sfxPlay(SFX_TAP);
-    }
-    return;
-  }
   if (expPlace < 0) {             // the map
     int ex = x - EXP_EXIT_X, ey = y - EXP_EXIT_Y, er = EXP_EXIT_R + 12;   // a finger, not a pixel
     if ((y < EXP_TOP_H && x > CX - 100 && x < CX + 100) || ex * ex + ey * ey <= er * er) {
@@ -7632,6 +7697,7 @@ static const char *const *menuIcon(uint8_t i) {
     case MENU_BATTLE: return SPR_MENU_BATTLE;
     case MENU_TRADE: return SPR_MENU_TRADE;
     case MENU_TEAM: return SPR_MENU_TEAM;
+    case MENU_BOXES: return SPR_MENU_BOX;
     case MENU_STATS: return SPR_MENU_STATS;
     case MENU_SETTINGS: return SPR_MENU_SETTINGS;
     default: return SPR_MENU_FAREWELL;
@@ -7644,6 +7710,7 @@ static const char *menuLabel(uint8_t i) {
     case MENU_BATTLE: return T(S_BATTLE);
     case MENU_TRADE: return T(S_MENU_TRADE);
     case MENU_TEAM: return T(S_MENU_TEAM);
+    case MENU_BOXES: return T(S_MENU_BOXES);
     case MENU_STATS: return T(S_STATS);
     case MENU_SETTINGS: return T(S_MENU_SETTINGS);
     default: return T(S_MENU_FAREWELL);
@@ -7655,7 +7722,7 @@ static const char *menuLabel(uint8_t i) {
 bool menuItemDisabled(uint8_t i) {
   if (i == MENU_FAREWELL) return !pet.canRetireNow();   // an egg or a companion
   if (i == MENU_TRADE) {                                 // nobody to offer
-    int8_t c[PARTY_SLOTS + BOX_SLOTS];
+    int8_t c[PARTY_SLOTS];
     return tradeCands(c) == 0;
   }
   return false;
@@ -7704,6 +7771,7 @@ void menuDo(uint8_t i) {
       lanOpen = true;
       break;
     case MENU_TEAM: partyOpen = true; break;  // the same place as a swipe right
+    case MENU_BOXES: boxOpenFrom(true); break;
     case MENU_STATS: cardOpen = true; cardPage = 1; break;   // straight to the stats page
     case MENU_SETTINGS: openClock(); break;
     case MENU_FAREWELL: choiceKind = 3; choiceUntil = millis() + 12000; break;
@@ -7818,128 +7886,266 @@ void renderTrain() {
   gfx->flush();   // without this the panel never updates and the screen freezes
 }
 
-// ---------- the box ----------
-// Storage past the six that fight. A creature is moved by picking a party slot
-// and then a box slot, which swaps them -- so one gesture covers deposit,
-// withdraw and exchange rather than needing three.
+// ---------- the boxes ----------
+// Every creature not in the team (pcbox.h), as a grid of thumbnails. The top
+// row is three pills -- the sort, the region and the type -- and the Pokedex
+// uses the same row, the same grid and the same CLOSE button, so a child who
+// has learned one screen has learned both. Swiping sideways pages.
+#define GRID_X 73                  // 4 x GAL_CELL across, centred
+#define GRID_Y 108
+#define GRID_COLS 4
+#define GRID_ROWS 3
+#define GRID_PER_PAGE (GRID_COLS * GRID_ROWS)
+#define PILL_Y 58
+#define PILL_H UI_TAP_MIN
+#define GRIDCLOSE_X (CX - 100)
+#define GRIDCLOSE_Y 356
+#define GRIDCLOSE_W 200
+#define GRIDCLOSE_H UI_TAP_MIN
+#define BOXPILL_W 94
+#define BOXPILL_GAP 9
+#define BOXPILL_X(i) (CX - (3 * BOXPILL_W + 2 * BOXPILL_GAP) / 2 + (i) * (BOXPILL_W + BOXPILL_GAP))
+
+// A type filter: 0 = all, else the type T_* + 1.
+bool dexHasTypeF(int16_t d, uint8_t f) {
+  return !f || DEX_TBL[d].type1 == f - 1 || DEX_TBL[d].type2 == f - 1;
+}
+
+// One filter pill. With arrows, a tap on its left half steps back and on its
+// right half forward, so 18 types are never more than 9 taps away.
+void drawPill(int x, int w, const char *lbl, uint16_t bg, uint16_t fg, bool arrows) {
+  gfx->fillRoundRect(x, PILL_Y, w, PILL_H, 12, bg);
+  gfx->drawRoundRect(x, PILL_Y, w, PILL_H, 12, UI_INK);
+  gfx->setTextColor(fg);
+  int room = w - (arrows ? 28 : 8);
+  int ts = (int)strlen(lbl) * 12 <= room ? 2 : 1;
+  gfx->setTextSize(ts);
+  gfx->setCursor(x + w / 2 - (int)strlen(lbl) * 3 * ts, PILL_Y + PILL_H / 2 - 4 * ts);
+  gfx->print(lbl);
+  if (arrows) {
+    gfx->setTextSize(2);
+    gfx->setCursor(x + 4, PILL_Y + PILL_H / 2 - 8);
+    gfx->print("<");
+    gfx->setCursor(x + w - 14, PILL_Y + PILL_H / 2 - 8);
+    gfx->print(">");
+  }
+}
+
+void drawTypePill(int x, int w, uint8_t f) {
+  if (!f) { drawPill(x, w, T(S_ALL_TYPES), UI_BG_DAY, UI_INK, true); return; }
+  drawPill(x, w, typeName(f - 1), typeColor(f - 1),
+           typeColorIsLight(f - 1) ? UI_INK : UI_WHITE, true);
+}
+
+// The CLOSE button both grids share, and the page number under it.
+void drawGridFooter(int page, int pages) {
+  gfx->fillRoundRect(GRIDCLOSE_X, GRIDCLOSE_Y, GRIDCLOSE_W, GRIDCLOSE_H, 12, UI_TRACK);
+  gfx->drawRoundRect(GRIDCLOSE_X, GRIDCLOSE_Y, GRIDCLOSE_W, GRIDCLOSE_H, 12, UI_INK);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(2);
+  gfx->setCursor(CX - (int)strlen(T(S_CLOSE)) * 6, GRIDCLOSE_Y + 14);
+  gfx->print(T(S_CLOSE));
+  char pg[12];
+  snprintf(pg, sizeof(pg), "%d/%d", page + 1, pages < 1 ? 1 : pages);
+  gfx->setTextColor(0x8410);
+  gfx->setCursor(CX - (int)strlen(pg) * 6, 412);
+  gfx->print(pg);
+}
+
+bool gridCloseHit(int16_t x, int16_t y) {
+  return x >= GRIDCLOSE_X && x <= GRIDCLOSE_X + GRIDCLOSE_W &&
+         y >= GRIDCLOSE_Y - 6 && y <= GRIDCLOSE_Y + GRIDCLOSE_H + 6;
+}
+
+// The centre of grid cell k, for the tests: a test that restates the
+// geometry keeps passing after the grid moves.
+void gridCellXY(int k, int *x, int *y) {
+  if (x) *x = GRID_X + (k % GRID_COLS) * GAL_CELL + GAL_CELL / 2;
+  if (y) *y = GRID_Y + (k / GRID_COLS) * GAL_CELL + GAL_CELL / 2;
+}
+
+// The grid cell a tap landed in, or -1.
+int gridCellAt(int16_t x, int16_t y) {
+  if (x < GRID_X || y < GRID_Y) return -1;
+  int c = (x - GRID_X) / GAL_CELL, r = (y - GRID_Y) / GAL_CELL;
+  if (c >= GRID_COLS || r >= GRID_ROWS) return -1;
+  return r * GRID_COLS + c;
+}
+
+// The boxes as the player sees them right now: filtered, then sorted. Indices
+// into the boxes, so whatever is tapped is the record that was drawn.
+static uint16_t boxView[PC_MAX];
+uint16_t boxViewBuild() {
+  static int16_t dexOf[PC_MAX];
+  uint16_t n = 0;
+  for (uint16_t i = 0; i < pcCount(); i++) {
+    PartyMon m;
+    if (!pcGet(i, m)) continue;
+    if (boxRegion) {
+      const RegionInfo &r = REGIONS[boxRegion - 1];
+      if (m.dex < r.lo || m.dex > r.hi) continue;
+    }
+    if (!dexHasTypeF(m.dex, boxType)) continue;
+    boxView[n] = i;
+    dexOf[n++] = m.dex;
+  }
+  if (boxSort) {                     // by number; arrival breaks the ties (stable)
+    for (uint16_t a = 1; a < n; a++) {
+      uint16_t v = boxView[a];
+      int16_t d = dexOf[a];
+      int b = a - 1;
+      while (b >= 0 && dexOf[b] > d) { boxView[b + 1] = boxView[b]; dexOf[b + 1] = dexOf[b]; b--; }
+      boxView[b + 1] = v;
+      dexOf[b + 1] = d;
+    }
+  }
+  return n;
+}
+
+int boxPages() {
+  uint16_t n = boxViewBuild();
+  return n ? (n + GRID_PER_PAGE - 1) / GRID_PER_PAGE : 1;
+}
+
+void boxOpenFrom(bool menu) {
+  boxOpen = true;
+  boxFromMenu = menu;
+  if (menu) partyOpen = true;        // the team is underneath, for TO TEAM
+  boxPage = 0;
+  boxDetail = 0;
+  boxToTeam = 0;
+  adoptArmUntil = 0;
+}
+
+void boxClose() {
+  boxOpen = false;
+  boxDetail = 0;
+  if (boxFromMenu) partyOpen = false;   // straight back to where the menu was
+  boxFromMenu = false;
+}
+
 void renderBox() {
   gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
-  char head[32];
-  snprintf(head, sizeof(head), T(S_BOX_FMT), party.boxCount(), BOX_SLOTS);
+  uint16_t n = boxViewBuild();
+  int pages = n ? (n + GRID_PER_PAGE - 1) / GRID_PER_PAGE : 1;
+  if (boxPage >= pages) boxPage = pages - 1;
+
+  char head[24];
+  snprintf(head, sizeof(head), T(S_BOX_FMT), (unsigned)pcCount());
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
-  gfx->setCursor(CX - (int)strlen(head) * 6, 40);
+  gfx->setCursor(CX - (int)strlen(head) * 6, 30);
   gfx->print(head);
-  if (boxSwapFrom) {
-    const PartyMon &p = party.slots[boxSwapFrom - 1];
-    char sub[40];
-    snprintf(sub, sizeof(sub), T(S_BOX_SWAP),
-             p.empty() ? "-" : (p.nick[0] ? p.nick : dexName(p.dex)));
-    gfx->setTextColor(UI_BAR_WARN);
-    gfx->setTextSize(1);
-    gfx->setCursor(CX - (int)strlen(sub) * 3, 64);
-    gfx->print(sub);
+
+  drawPill(BOXPILL_X(0), BOXPILL_W, boxSort ? "N." : T(S_SORT_NEW), UI_BG_DAY, UI_INK, false);
+  drawPill(BOXPILL_X(1), BOXPILL_W, boxRegion ? REGIONS[boxRegion - 1].name : T(S_ALL_REGIONS),
+           UI_BG_DAY, UI_INK, true);
+  drawTypePill(BOXPILL_X(2), BOXPILL_W, boxType);
+
+  if (!n) {
+    gfx->setTextColor(0x8410);
+    gfx->setTextSize(2);
+    gfx->setCursor(CX - (int)strlen(T(S_PARTY_EMPTY)) * 6, GRID_Y + GAL_CELL);
+    gfx->print(T(S_PARTY_EMPTY));
   }
-  for (uint8_t i = 0; i < BOX_PER_PAGE; i++) {
-    uint8_t idx = boxPage * BOX_PER_PAGE + i;
-    if (idx >= BOX_SLOTS) break;
-    const PartyMon &m = party.box[idx];
-    int x = PARTY_GRID_X + (i % 2) * (PARTY_CELL_W + 10);
-    int y = 88 + (i / 2) * (PARTY_CELL_H + 8);
-    gfx->fillRoundRect(x, y, PARTY_CELL_W, PARTY_CELL_H, 10,
-                       m.empty() ? UI_TRACK : UI_WHITE);
-    gfx->drawRoundRect(x, y, PARTY_CELL_W, PARTY_CELL_H, 10, UI_INK);
-    if (m.empty()) {
+  for (int k = 0; k < GRID_PER_PAGE; k++) {
+    int v = boxPage * GRID_PER_PAGE + k;
+    if (v >= n) break;
+    PartyMon m;
+    if (!pcGet(boxView[v], m)) continue;
+    int x = GRID_X + (k % GRID_COLS) * GAL_CELL, y = GRID_Y + (k / GRID_COLS) * GAL_CELL;
+    const uint8_t *t = thumbs.get(m.dex);
+    if (t) drawThumb(t, x, y - 6, 2, false);
+    else {
+      char num[6];
+      snprintf(num, sizeof(num), "%d", m.dex);
       gfx->setTextColor(0x8410);
-      gfx->setTextSize(1);
-      gfx->setCursor(x + PARTY_CELL_W / 2 - 18, y + PARTY_CELL_H / 2 - 4);
-      gfx->print(T(S_PARTY_EMPTY));
-      continue;
+      gfx->setTextSize(2);
+      gfx->setCursor(x + GAL_CELL / 2 - (int)strlen(num) * 6, y + 26);
+      gfx->print(num);
     }
-    const uint8_t *th = thumbs.get(m.dex);
-    if (th) drawThumb(th, x - 14, y - 4, 2, false);
+    char lv[10];
+    snprintf(lv, sizeof(lv), "Lv%u", (unsigned)m.level);
     gfx->setTextColor(UI_INK);
     gfx->setTextSize(1);
-    gfx->setCursor(x + 52, y + 16);
-    gfx->print(m.nick[0] ? m.nick : dexName(m.dex));
-    char l[16];
-    snprintf(l, sizeof(l), "Lv.%u%s", (unsigned)m.level, m.shiny ? " *" : "");
-    gfx->setCursor(x + 52, y + 34);
-    gfx->print(l);
+    gfx->setCursor(x + GAL_CELL / 2 - (int)strlen(lv) * 3, y + GAL_CELL - 12);
+    gfx->print(lv);
+    if (m.shiny) {
+      gfx->setTextColor(UI_BAR_WARN);
+      gfx->setTextSize(2);
+      gfx->setCursor(x + 62, y + 2);
+      gfx->print("*");
+    }
   }
-  uint8_t pages = BOX_SLOTS / BOX_PER_PAGE;
-  for (uint8_t i = 0; i < pages; i++) {
-    int dx = CX - (pages - 1) * 13 + i * 26;
-    if (i == boxPage) gfx->fillCircle(dx, 366, 5, UI_INK);
-    else gfx->drawCircle(dx, 366, 4, UI_INK);
-  }
-  gfx->setTextColor(UI_TRACK);
-  gfx->setTextSize(2);
-  gfx->setCursor(CX - strlen(T(S_BACK)) * 6, 392);
-  gfx->print(T(S_BACK));
+  drawGridFooter(boxPage, pages);
   gfx->flush();
 }
 
 void boxTap(int16_t x, int16_t y) {
-  // The sheet is checked first and is modal in the same way the party's is.
+  // The sheet covers the whole screen, so it is checked first and nothing
+  // behind it answers.
   if (boxDetail) {
-    if (releaseConfirm) { monSheetConfirmTap(x, y, true); return; }
-    if (monSheetBtn(x, y, true)) {          // TO PARTY
-      int free = party.firstFree();
-      if (free < 0) { sfxPlay(SFX_DENY); return; }
-      party.swapPartyBox((uint8_t)free, boxDetail - 1);
+    int b = sheetBtnAt(true, x, y);
+    if (b < 0) {                            // anywhere else backs out
       boxDetail = 0;
-      boxSel = 0;
-      sfxPlay(SFX_MEDAL);
-      return;
-    }
-    if (monSheetBtn(x, y, false)) {         // RELEASE -- ask first, always
-      releaseConfirm = true;
+      adoptArmUntil = 0;
       sfxPlay(SFX_TAP);
       return;
     }
-    boxDetail = 0;                          // anywhere else backs out
-    releaseConfirm = false;
-    sfxPlay(SFX_TAP);
-    return;
-  }
-  for (uint8_t i = 0; i < BOX_PER_PAGE; i++) {
-    uint8_t idx = boxPage * BOX_PER_PAGE + i;
-    if (idx >= BOX_SLOTS) break;
-    int cx0 = PARTY_GRID_X + (i % 2) * (PARTY_CELL_W + 10);
-    int cy0 = 88 + (i / 2) * (PARTY_CELL_H + 8);
-    if (x < cx0 || x > cx0 + PARTY_CELL_W || y < cy0 || y > cy0 + PARTY_CELL_H) continue;
-    if (boxSwapFrom) {           // a party slot is waiting: complete the trade
-      if (party.slots[boxSwapFrom - 1].empty() && party.box[idx].empty()) {
-        sfxPlay(SFX_DENY);
+    if (!sheetBtnLive(true, (uint8_t)b, nullptr)) { sfxPlay(SFX_DENY); return; }
+    if (b == SB_TO_TEAM) {
+      if (party.firstFree() >= 0) {
+        if (!boxToTeamDo(boxDetail - 1, -1)) { sfxPlay(SFX_DENY); return; }
+        boxDetail = 0;
+        sfxPlay(SFX_MEDAL);
         return;
       }
-      party.swapPartyBox(boxSwapFrom - 1, idx);
-      boxSwapFrom = 0;
-      boxSel = 0;
-      sfxPlay(SFX_MEDAL);
-      return;
-    }
-    // Otherwise open its SHEET. It used to go straight to the party, which is a
-    // lot to happen from one tap and left nowhere to put RELEASE; the sheet
-    // offers TO PARTY explicitly and shows what you are about to move.
-    if (party.box[idx].empty()) { sfxPlay(SFX_DENY); return; }
-    if (party.firstFree() < 0) {
-      boxSel = idx + 1;          // party is full: go choose who steps out
+      boxToTeam = boxDetail;                // full: the team opens to choose who swaps
+      boxDetail = 0;
       boxOpen = false;
+      partyOpen = true;
+      partyDetail = 0;
       sfxPlay(SFX_TAP);
       return;
     }
-    boxDetail = idx + 1;
-    releaseConfirm = false;
-    sfxPlay(SFX_TAP);
+    // ADOPT gives up the egg, which cannot be undone: the first tap arms it
+    if (millis() >= adoptArmUntil) { adoptArmUntil = millis() + 3000; sfxPlay(SFX_TAP); return; }
+    adoptArmUntil = 0;
+    PartyMon m;
+    if (!pcGet(boxDetail - 1, m) || !pet.adoptFrom(m)) { sfxPlay(SFX_DENY); return; }
+    pcTake(boxDetail - 1);
+    Serial.printf("adopt: %s (dex %d) replaces the egg\n", DEX_TBL[m.dex].name, m.dex);
+    boxDetail = 0;
+    boxOpen = false;                        // straight back to the new creature
+    boxFromMenu = false;
+    partyOpen = false;
     return;
   }
-  boxOpen = false;               // anywhere else backs out
-  boxSwapFrom = 0;
-  boxDetail = 0;
-  releaseConfirm = false;
+  if (y >= PILL_Y - 4 && y <= PILL_Y + PILL_H + 4) {
+    for (int i = 0; i < 3; i++) {
+      int px = BOXPILL_X(i);
+      if (x < px || x > px + BOXPILL_W) continue;
+      int step = x < px + BOXPILL_W / 2 ? -1 : 1;
+      if (i == 0) boxSort ^= 1;
+      else if (i == 1) boxRegion = (uint8_t)((boxRegion + step + GAL_REGIONS + 1) % (GAL_REGIONS + 1));
+      else boxType = (uint8_t)((boxType + step + TYPE_COUNT + 1) % (TYPE_COUNT + 1));
+      boxPage = 0;
+      sfxPlay(SFX_TAP);
+      return;
+    }
+    return;
+  }
+  if (gridCloseHit(x, y) || y < 40) { boxClose(); sfxPlay(SFX_TAP); return; }
+  int k = gridCellAt(x, y);
+  if (k < 0) return;
+  uint16_t n = boxViewBuild();
+  int v = boxPage * GRID_PER_PAGE + k;
+  if (v >= n) return;
+  boxDetail = boxView[v] + 1;
+  adoptArmUntil = 0;
+  PartyMon m;
+  if (pcGet(boxView[v], m)) cryOr(m.dex, SFX_TAP);
 }
 
 // ---------- party ----------
@@ -7989,14 +8195,12 @@ void renderParty() {
   gfx->setCursor(CX - (int)strlen(head) * 9, 42);
   gfx->print(head);
 
-  // the box lives behind this button; it also shows how full it is, so the
-  // player knows there is anything in there without opening it
-  if (!partyPick) {
+  // the boxes live behind this button; it also shows how many are in there,
+  // so the player knows there is anything without opening them
+  if (!partyPick && !boxToTeam) {
     char bl[24];
-    snprintf(bl, sizeof(bl), T(S_BOX_FMT), party.boxCount(), BOX_SLOTS);
-    bool armed = boxSwapFrom != 0;
-    gfx->fillRoundRect(BOXBTN_X, BOXBTN_Y, BOXBTN_W, BOXBTN_H, 10,
-                       armed ? UI_BAR_WARN : UI_BG_DAY);
+    snprintf(bl, sizeof(bl), T(S_BOX_FMT), (unsigned)pcCount());
+    gfx->fillRoundRect(BOXBTN_X, BOXBTN_Y, BOXBTN_W, BOXBTN_H, 10, UI_BG_DAY);
     gfx->drawRoundRect(BOXBTN_X, BOXBTN_Y, BOXBTN_W, BOXBTN_H, 10, UI_INK);
     gfx->setTextColor(UI_INK);
     gfx->setTextSize(2);
@@ -8004,8 +8208,8 @@ void renderParty() {
     gfx->print(bl);
   }
 
-  if (boxSel) {
-    const PartyMon &b = party.box[boxSel - 1];
+  PartyMon b;
+  if (boxToTeam && pcGet(boxToTeam - 1, b)) {   // who goes to the boxes for it?
     char sw[44];
     snprintf(sw, sizeof(sw), T(S_BOX_SWAP),
              b.nick[0] ? b.nick : dexName(b.dex));
@@ -8030,9 +8234,10 @@ void renderParty() {
   }
 
   // exit: an explicit button, always in the same place
-  const char *ex = partyPick ? T(S_PARTY_LETGO) : T(S_CLOSE);
+  // A farewell's newcomer can always go to the boxes instead: nothing is let go.
+  const char *ex = partyPick ? T(S_TO_BOX) : T(S_CLOSE);
   gfx->fillRoundRect(PARTYCLOSE_X, PARTYCLOSE_Y, PARTYCLOSE_W, PARTYCLOSE_H, 12,
-                     partyPick ? UI_BAR_BAD : UI_TRACK);
+                     partyPick ? UI_BAR_OK : UI_TRACK);
   gfx->drawRoundRect(PARTYCLOSE_X, PARTYCLOSE_Y, PARTYCLOSE_W, PARTYCLOSE_H, 12, UI_INK);
   gfx->setTextColor(partyPick ? UI_WHITE : UI_INK);
   gfx->setTextSize(2);
@@ -8112,108 +8317,72 @@ void keyboardTap(int16_t x, int16_t y) {
   }
 }
 
-// Every creature in the Pokedex box was caught, so its species belongs in the
-// Pokedex. Until 3.25 a fight closed the save's NVS handle (ownprefs.h) and
-// catches after it reached the box -- a file -- but not the Pokedex, so a
-// Pokeball sat on species still drawn in black. Run at every boot: it costs a
-// pass over a bitmap, and it is the one way those catches come back.
-void dexBoxRepair() {
-  if (!dexBoxReady()) return;
+// At boot. The old storage (the Pokedex box file and the 18-slot box) moves
+// into the boxes, once. Then every creature in the boxes was caught, so its
+// species belongs in the Pokedex: until 3.25 a fight closed the save's NVS
+// handle (ownprefs.h) and catches reached the file but not the Pokedex, so a
+// Pokeball sat on species still drawn in black. A pass over the list puts
+// them back.
+void pcStartup() {
+  uint16_t moved = pcMigrate();
+  if (moved) Serial.printf("pc: %u creatures moved into the boxes\n", moved);
   uint16_t fixed = 0;
-  for (int16_t d = 1; d <= DEX_COUNT; d++) {
-    if (!dexBoxHas(d) || pet.isRegistered(d)) continue;
+  for (uint16_t i = 0; i < pcCount(); i++) {
     PartyMon m;
-    pet.registerCaught(d, dexBoxGet(d, m) && m.shiny);
+    if (!pcGet(i, m) || pet.isRegistered(m.dex)) continue;
+    pet.registerCaught(m.dex, m.shiny);
     fixed++;
   }
-  if (fixed) Serial.printf("dexbox: %u caught species put back in the Pokedex\n", fixed);
+  if (fixed) Serial.printf("pc: %u caught species put back in the Pokedex\n", fixed);
 }
 
 // ---------- galeria pokedex ----------
+// The Pokedex SHOWS what you have; it moves nothing (the boxes and the team do
+// that). A Pokeball on a species means one is in the boxes, a green dot that
+// one is in the team or is the creature you are raising. One region at a time,
+// narrowed by type, on the same grid, pills and CLOSE button as the boxes.
+uint8_t galType = 0;          // 0 = every type, else T_* + 1
 
-// The Pokedex page's one button, which moves a creature between the Pokedex
-// box and the team. ONE answer for what it offers (dexPageAction) and one for
-// doing it (dexPageDo), asked by the draw, the tap and the tests alike.
-#define DEXBTN_Y 344
-#define DEXBTN_H 46
-#define DEXBTN_W 240
-enum : uint8_t { DEXACT_NONE = 0, DEXACT_TO_TEAM, DEXACT_TEAM_FULL, DEXACT_STORE };
-
-// A banked creature of this species, box first so the fighting six are the
-// last to be touched: 1..BOX_SLOTS for the box, -1..-PARTY_SLOTS for the party.
-static int teamMemberOf(int16_t dex) {
-  for (int i = 0; i < BOX_SLOTS; i++) if (party.box[i].dex == dex) return i + 1;
-  for (int i = 0; i < PARTY_SLOTS; i++) if (party.slots[i].dex == dex) return -(i + 1);
+// The species on show, in dex order: the region's, of the chosen type.
+int galCount() {
+  int n = 0;
+  for (int16_t d = GAL_LO; d <= GAL_HI && d <= DEX_COUNT; d++) n += dexHasTypeF(d, galType);
+  return n;
+}
+int16_t galAt(int k) {
+  for (int16_t d = GAL_LO; d <= GAL_HI && d <= DEX_COUNT; d++)
+    if (dexHasTypeF(d, galType) && k-- == 0) return d;
   return 0;
 }
-
-uint8_t dexPageAction(int16_t dex) {
-  if (!pet.isRegistered(dex) || !dexBoxReady()) return DEXACT_NONE;
-  if (dexBoxHas(dex))
-    return (party.firstFree() >= 0 || party.boxFirstFree() >= 0) ? DEXACT_TO_TEAM : DEXACT_TEAM_FULL;
-  return teamMemberOf(dex) ? DEXACT_STORE : DEXACT_NONE;
+int gridPerPage() { return GRID_PER_PAGE; }   // for the tests: never a second copy
+int galPages() {
+  int n = galCount();
+  return n ? (n + GRID_PER_PAGE - 1) / GRID_PER_PAGE : 1;
 }
 
-// While an egg waits, a creature in the Pokedex box can be raised instead of
-// it. The page then shows two buttons side by side, the team one on the left.
-bool dexPageCanAdopt(int16_t dex) {
-  return dexBoxHas(dex) && pet.isEgg() && !pet.awaitingStarter();
-}
-
-#define ADOPT_W 150
-#define ADOPT_GAP 12
-static int dexBtnW(int16_t dex) { return dexPageCanAdopt(dex) ? ADOPT_W : DEXBTN_W; }
-static int dexBtnX(int16_t dex) {
-  return dexPageCanAdopt(dex) ? CX - ADOPT_W - ADOPT_GAP / 2 : CX - DEXBTN_W / 2;
-}
-
-bool dexPageButtonHit(int16_t x, int16_t y) {
-  int bx = dexBtnX(galleryDetail);
-  return x >= bx && x <= bx + dexBtnW(galleryDetail) &&
-         y >= DEXBTN_Y - 4 && y <= DEXBTN_Y + DEXBTN_H + 4;
-}
-
-bool dexAdoptHit(int16_t x, int16_t y) {
-  if (!dexPageCanAdopt(galleryDetail)) return false;
-  int bx = CX + ADOPT_GAP / 2;
-  return x >= bx && x <= bx + ADOPT_W && y >= DEXBTN_Y - 4 && y <= DEXBTN_Y + DEXBTN_H + 4;
-}
-
-// Giving up the egg cannot be undone, so the first tap only arms the button.
-uint32_t adoptArmUntil = 0;
-
-// Raises the Pokedex box's creature of this species in place of the egg.
-bool dexAdopt(int16_t dex) {
-  PartyMon m;
-  if (!dexPageCanAdopt(dex) || !dexBoxGet(dex, m)) return false;
-  if (!pet.adoptFrom(m)) return false;
-  dexBoxTake(dex);
-  Serial.printf("adopt: %s (dex %d) replaces the egg\n", DEX_TBL[dex].name, dex);
-  return true;
-}
-
-// Moves it and returns true, or returns false having changed nothing.
-bool dexPageDo(int16_t dex) {
-  uint8_t act = dexPageAction(dex);
-  PartyMon m;
-  if (act == DEXACT_TO_TEAM) {
-    if (!dexBoxGet(dex, m)) return false;
-    if (!party.add(m) && !party.boxAdd(m)) return false;
-    dexBoxTake(dex);
-    return true;
-  }
-  if (act == DEXACT_STORE) {
-    int at = teamMemberOf(dex);
-    m = at > 0 ? party.box[at - 1] : party.slots[-at - 1];
-    if (!dexBoxPut(m)) return false;       // stored FIRST: never in neither place
-    if (at > 0) party.boxReleaseAt(at - 1); else party.releaseAt(-at - 1);
-    return true;
-  }
+// In the team, or the creature being raised: either way it is "with you".
+bool dexWithYou(int16_t dex) {
+  if (!pet.isEgg() && pet.speciesId == dex) return true;
+  for (int i = 0; i < PARTY_SLOTS; i++) if (party.slots[i].dex == dex) return true;
   return false;
 }
+uint16_t pcCountOf(int16_t dex) {
+  if (!pcHas(dex)) return 0;
+  uint16_t n = 0;
+  for (uint16_t i = 0; i < pcCount(); i++) {
+    PartyMon m;
+    if (pcGet(i, m) && m.dex == dex) n++;
+  }
+  return n;
+}
+void drawTeamDot(int cx, int cy) {
+  gfx->fillCircle(cx, cy, 7, UI_BAR_OK);
+  gfx->drawCircle(cx, cy, 7, UI_INK);
+}
 
-#define GAL_X 73
-#define GAL_Y 84
+#define GALPILL_W 140
+#define GALPILL_GAP 10
+#define GALPILL_X(i) (CX - GALPILL_W - GALPILL_GAP / 2 + (i) * (GALPILL_W + GALPILL_GAP))
 
 // dibuja una miniatura centrada en su celda; sil=true la pinta en tinta
 void drawThumb(const uint8_t *b, int x, int y, int s, bool sil) {
@@ -8254,44 +8423,27 @@ void renderGallery() {
       const uint8_t *t = thumbs.get(galleryDetail);
       if (t) drawThumb(t, CX - GAL_CELL, 135, 4, !reg);
     }
-    // The Pokedex box: this species' creature, or a place to put one.
-    uint8_t act = dexPageAction(galleryDetail);
-    if (act != DEXACT_NONE) {
-      if (act == DEXACT_TO_TEAM || act == DEXACT_TEAM_FULL) {
-        PartyMon m;
-        dexBoxGet(galleryDetail, m);
-        char l[32];
-        snprintf(l, sizeof(l), T(S_DEXBOX_FMT), (unsigned)m.level);
-        gfx->setTextColor(UI_INK);
-        gfx->setTextSize(1);
-        gfx->setCursor(CX - (int)strlen(l) * 3, DEXBTN_Y - 16);
-        gfx->print(l);
-      }
-      bool live = (act != DEXACT_TEAM_FULL);
-      const char *lbl = act == DEXACT_STORE ? T(S_TO_DEX)
-                      : (live ? T(S_TO_TEAM) : T(S_PARTY_FULL));
-      int bx = dexBtnX(galleryDetail), bw = dexBtnW(galleryDetail);
-      gfx->fillRoundRect(bx, DEXBTN_Y, bw, DEXBTN_H, 12, live ? UI_BAR_OK : UI_TRACK);
-      gfx->drawRoundRect(bx, DEXBTN_Y, bw, DEXBTN_H, 12, UI_INK);
-      gfx->setTextColor(live ? UI_WHITE : 0x8410);
-      int ts = strlen(lbl) * 12 > bw - 16 ? 1 : 2;
-      gfx->setTextSize(ts);
-      gfx->setCursor(bx + bw / 2 - (int)strlen(lbl) * 3 * ts, DEXBTN_Y + DEXBTN_H / 2 - 4 * ts);
-      gfx->print(lbl);
+    // Where yours are: with you, and how many in the boxes.
+    int ly = 346;
+    if (dexWithYou(galleryDetail)) {
+      drawTeamDot(CX - (int)strlen(T(S_IN_TEAM)) * 6 - 14, ly + 7);
+      gfx->setTextColor(UI_INK);
+      gfx->setTextSize(2);
+      gfx->setCursor(CX - (int)strlen(T(S_IN_TEAM)) * 6, ly);
+      gfx->print(T(S_IN_TEAM));
+      ly += 26;
     }
-    if (dexPageCanAdopt(galleryDetail)) {
-      bool armed = millis() < adoptArmUntil;
-      const char *lbl = armed ? T(S_ADOPT_SURE) : T(S_ADOPT);
-      int bx = CX + ADOPT_GAP / 2;
-      gfx->fillRoundRect(bx, DEXBTN_Y, ADOPT_W, DEXBTN_H, 12, armed ? UI_BAR_BAD : UI_BAR_WARN);
-      gfx->drawRoundRect(bx, DEXBTN_Y, ADOPT_W, DEXBTN_H, 12, UI_INK);
-      gfx->setTextColor(UI_WHITE);
-      int ts = strlen(lbl) * 12 > ADOPT_W - 16 ? 1 : 2;
-      gfx->setTextSize(ts);
-      gfx->setCursor(bx + ADOPT_W / 2 - (int)strlen(lbl) * 3 * ts, DEXBTN_Y + DEXBTN_H / 2 - 4 * ts);
-      gfx->print(lbl);
+    uint16_t inBox = pcCountOf(galleryDetail);
+    if (inBox) {
+      char l[32];
+      snprintf(l, sizeof(l), T(S_DEXBOX_FMT), (unsigned)inBox);
+      drawBallIcon(CX - (int)strlen(l) * 6 - 14, ly + 7, 8);
+      gfx->setTextColor(UI_INK);
+      gfx->setTextSize(2);
+      gfx->setCursor(CX - (int)strlen(l) * 6, ly);
+      gfx->print(l);
     }
-    gfx->setTextColor(UI_INK);
+    gfx->setTextColor(UI_TRACK);
     gfx->setTextSize(2);
     gfx->setCursor(CX - strlen(T(S_DETAIL_BACK)) * 6, 408);
     gfx->print(T(S_DETAIL_BACK));
@@ -8304,90 +8456,88 @@ void renderGallery() {
 
   gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
-  // the region's own name and its own tally: "how much of Johto have I seen"
-  // is the question you are actually asking here
+  // the region's own tally: "how much of Johto have I seen" is the question
+  // you are actually asking here
   char head[32];
   const RegionInfo &grg = REGIONS[galleryRegion % GAL_REGIONS];
-  snprintf(head, sizeof(head), "%s %u/%u", grg.name,
+  snprintf(head, sizeof(head), "POKEDEX %u/%u",
            pet.registeredCountIn(grg.lo, grg.hi), (unsigned)dexObtainableIn(grg.lo, grg.hi));
   gfx->setTextColor(UI_INK);
-  gfx->setTextSize(3);
-  gfx->setCursor(CX - strlen(head) * 9, 36);
+  gfx->setTextSize(2);
+  gfx->setCursor(CX - (int)strlen(head) * 6, 30);
   gfx->print(head);
+  // the region pill goes back to the chooser, which shows every region's tally
+  drawPill(GALPILL_X(0), GALPILL_W, grg.name, UI_BG_DAY, UI_INK, false);
+  drawTypePill(GALPILL_X(1), GALPILL_W, galType);
 
-  for (int r = 0; r < 4; r++) {
-    for (int c = 0; c < 4; c++) {
-      int16_t dex = GAL_LO + galleryPage * GAL_PER_PAGE + r * 4 + c;
-      if (dex > GAL_HI || dex > DEX_COUNT) break;
-      int x = GAL_X + c * GAL_CELL, y = GAL_Y + r * GAL_CELL;
-      const uint8_t *t = thumbs.get(dex);
-      if (t) {
-        drawThumb(t, x, y, 2, !pet.isRegistered(dex));
-        if (dexBoxHas(dex)) drawBallIcon(x + 10, y + 10, 7);   // one waits in the Pokedex box
-        if (pet.isShinyRegistered(dex)) {
-          gfx->setTextColor(UI_BAR_WARN);
-          gfx->setTextSize(2);
-          gfx->setCursor(x + 62, y + 4);
-          gfx->print("*");
-        }
-      } else {
-        // No thumbnail: either the pack is not on the card yet, or the species
-        // has no art anywhere (noart.h) -- it can then never hatch, be met or be
-        // evolved into. A framed number says "there is one here" instead of a
-        // gap a child reads as a bug.
-        char num[6];
-        snprintf(num, sizeof(num), "%d", dex);
-        gfx->drawRoundRect(x + 8, y + 8, GAL_CELL - 16, GAL_CELL - 16, 10, 0x8410);
-        gfx->setTextColor(0x8410);
+  int n = galCount(), pages = galPages();
+  if (galleryPage >= pages) galleryPage = pages - 1;
+  for (int k = 0; k < GRID_PER_PAGE; k++) {
+    int v = galleryPage * GRID_PER_PAGE + k;
+    if (v >= n) break;
+    int16_t dex = galAt(v);
+    int x = GRID_X + (k % GRID_COLS) * GAL_CELL, y = GRID_Y + (k / GRID_COLS) * GAL_CELL;
+    const uint8_t *t = thumbs.get(dex);
+    if (t) {
+      drawThumb(t, x, y, 2, !pet.isRegistered(dex));
+      if (pcHas(dex)) drawBallIcon(x + 12, y + 12, 9);          // one is in the boxes
+      if (dexWithYou(dex)) drawTeamDot(x + GAL_CELL - 12, y + 12);   // one is with you
+      if (pet.isShinyRegistered(dex)) {
+        gfx->setTextColor(UI_BAR_WARN);
         gfx->setTextSize(2);
-        gfx->setCursor(x + GAL_CELL / 2 - (int)strlen(num) * 6, y + 32);
-        gfx->print(num);
+        gfx->setCursor(x + 62, y + 56);
+        gfx->print("*");
       }
+    } else {
+      // No thumbnail: either the pack is not on the card yet, or the species
+      // has no art anywhere (noart.h) -- it can then never hatch, be met or be
+      // evolved into. A framed number says "there is one here" instead of a
+      // gap a child reads as a bug.
+      char num[6];
+      snprintf(num, sizeof(num), "%d", dex);
+      gfx->drawRoundRect(x + 8, y + 8, GAL_CELL - 16, GAL_CELL - 16, 10, 0x8410);
+      gfx->setTextColor(0x8410);
+      gfx->setTextSize(2);
+      gfx->setCursor(x + GAL_CELL / 2 - (int)strlen(num) * 6, y + 32);
+      gfx->print(num);
     }
   }
-  // A page number, not a row of dots. 25 dots do not fit across the bottom of
-  // a round panel -- the chord at that height is only ~228 px -- and counting
-  // them to find where you are is worse than reading the number.
-  char pg[12];
-  snprintf(pg, sizeof(pg), "%d/%d", galleryPage + 1, (int)GAL_PAGES);
-  gfx->setTextColor(UI_TRACK);
-  gfx->setTextSize(2);
-  gfx->setCursor(CX - (int)strlen(pg) * 6, 428);
-  gfx->print(pg);
+  drawGridFooter(galleryPage, pages);
   gfx->flush();
 }
 
 void galleryTap(int16_t x, int16_t y) {
-  if (galleryDetail && dexAdoptHit(x, y)) {
-    if (millis() >= adoptArmUntil) { adoptArmUntil = millis() + 3000; sfxPlay(SFX_TAP); return; }
-    adoptArmUntil = 0;
-    if (!dexAdopt(galleryDetail)) { sfxPlay(SFX_DENY); return; }
-    galleryDetail = 0;              // straight back to the new creature
-    galleryPmd.unload();
-    galleryOpen = false;
-    menuOpen = false;
-    return;
-  }
-  if (galleryDetail && dexPageButtonHit(x, y)) {
-    if (!dexPageDo(galleryDetail)) sfxPlay(SFX_DENY);
-    else sfxPlay(SFX_TAP);
-    return;
-  }
   if (galleryDetail) {  // volver a la rejilla
     galleryDetail = 0;
     galleryPmd.unload();
     galleryDirty = true;
     return;
   }
-  if (y < 72) {  // tocar la cabecera = salir
-    galleryOpen = false;
-    galleryPmd.unload();
+  galleryDirty = true;
+  if (y >= PILL_Y - 4 && y <= PILL_Y + PILL_H + 4) {
+    if (x >= GALPILL_X(0) && x <= GALPILL_X(0) + GALPILL_W) {   // the region chooser
+      galleryPick = true;
+      rpickPage = 0;
+      sfxPlay(SFX_TAP);
+    } else if (x >= GALPILL_X(1) && x <= GALPILL_X(1) + GALPILL_W) {
+      int step = x < GALPILL_X(1) + GALPILL_W / 2 ? -1 : 1;
+      galType = (uint8_t)((galType + step + TYPE_COUNT + 1) % (TYPE_COUNT + 1));
+      galleryPage = 0;
+      sfxPlay(SFX_TAP);
+    }
     return;
   }
-  int c = (x - GAL_X) / GAL_CELL, r = (y - GAL_Y) / GAL_CELL;
-  if (c < 0 || c > 3 || r < 0 || r > 3) return;
-  int16_t dex = GAL_LO + galleryPage * GAL_PER_PAGE + r * 4 + c;
-  if (dex > GAL_HI || dex > DEX_COUNT) return;
+  if (gridCloseHit(x, y) || y < 40) {  // CLOSE, or the title band, as before
+    galleryOpen = false;
+    galleryPmd.unload();
+    sfxPlay(SFX_TAP);
+    return;
+  }
+  int k = gridCellAt(x, y);
+  if (k < 0) return;
+  int v = galleryPage * GRID_PER_PAGE + k;
+  if (v >= galCount()) return;
+  int16_t dex = galAt(v);
   galleryDetail = dex;
   galleryPmd.load(dex, pet.isShinyRegistered(dex));
   // only one you have met: an unknown one stays a silhouette, silent too, and

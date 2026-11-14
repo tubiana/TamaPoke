@@ -62,7 +62,7 @@ enum StrId : uint8_t {
   S_PARTY_EMPTY,    // empty slot marker
   S_PARTY_JOINED,   // "%s joined the party!"
   S_PARTY_FULL,     // prompt: pick someone to replace
-  S_PARTY_LETGO,    // decline the swap
+  S_ALL_REGIONS,    // the boxes' region pill with no region chosen
   // stats shortcut in the menu, and the training submenu behind the 5th icon
   S_STATS,          // menu row: jump straight to the stats card page
   S_TRAIN,          // training submenu title
@@ -104,7 +104,7 @@ enum StrId : uint8_t {
   S_BTL_BEAT,       // "%s defeated!" on the win screen
   S_BTL_NEWBADGE,   // a badge earned for the first time
   S_VOL_FMT,        // volume level, e.g. "VOL 7"
-  S_BOX_FMT,        // "BOX %u/%u"
+  S_BOX_FMT,        // "BOXES %u": how many are in the boxes
   S_BOX_SWAP,       // "swap with %s: pick a slot"
   S_BOX_BTN,        // the button on the party screen
   S_REVIVE,         // bring a banked creature back as a companion
@@ -128,7 +128,7 @@ enum StrId : uint8_t {
   // pet's own release dialog already owns -- the question is the same question.
   S_RELEASE_BTN,    // the button on the detail sheet
   S_RELEASE_GONE,   // ...and the warning under it: this one does not come back
-  S_BOX_TAKE,       // box detail sheet: move this creature into the party
+  S_IN_TEAM,       // Pokedex page: one is in the team, or is the one you raise
   S_RETIRE_GONE,    // retire confirm: an early retire is not banked either
   // OPTIONS, the second page of SETTINGS
   S_OPTIONS,        // its title
@@ -177,17 +177,17 @@ enum StrId : uint8_t {
   S_CATCH_OK_FMT,  // "Gotcha! %s was caught!"
   S_CATCH_FAIL,  // the ball broke open
   S_WILD_KO,  // the wild one fainted: a hint to use a ball
-  S_KEEP_Q_FMT,  // "Keep which %s?" when one is already in the Pokedex
-  S_KEEP_OLD_FMT,  // "OLD Lv.%u"
-  S_KEEP_NEW_FMT,  // "NEW Lv.%u"
-  S_DEXBOX_FMT,  // "In the Pokedex: Lv.%u"
-  S_TO_TEAM,  // Pokedex page: move it to the team
-  S_TO_DEX,  // Pokedex page: put one of the team here
-  S_STORED_FMT,  // "%s is in the Pokedex"
+  S_MENU_BOXES,  // the menu tile: every creature not in the team
+  S_SORT_NEW,  // the boxes' sort pill: in the order they arrived
+  S_ALL_TYPES,  // the type pill with no type chosen
+  S_DEXBOX_FMT,  // "In boxes: %u" on a Pokedex page
+  S_TO_TEAM,  // box sheet: move it to the team
+  S_TO_BOX,  // team sheet: send this one to the boxes
+  S_STORED_FMT,  // "%s went to the boxes" after a catch
   S_XP_FMT,  // "%s +%u XP"
   S_GREW_FMT,  // "%s grew to Lv.%u!"
   S_EVOLVED_FMT,  // "%s became %s!"
-  S_ADOPT,  // Pokedex page, while an egg waits: raise this one instead
+  S_ADOPT,  // box sheet, while an egg waits: raise this one instead
   S_ADOPT_SURE,  // the second tap that confirms it
   S_TRADE,  // the LAN screen's TRADE button and the trade screen title
   S_TRADE_GIVE,  // trade: what you put on the table
