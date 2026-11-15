@@ -75,10 +75,10 @@ static_assert(STK_COUNT <= 32, "stickers are one bit each in a uint32_t");
 
 // Exploring. Up to EXP_MAX outings banked; one comes back every
 // EXP_CHARGE_UNITS, where an awake minute is worth 1 and an asleep one
-// EXP_SLEEP_RATE -- so a full bar takes 10 h awake, or 2 h of sleep. The board
+// EXP_SLEEP_RATE -- so a full bar takes 16 h 40 awake, or 3 h 20 of sleep. The board
 // switched off counts like the creature's own state at the time, through the
 // same syncClock() catch-up as everything else.
-#define EXP_MAX 3
+#define EXP_MAX 5      // was 3 until 3.37: more tries at catching
 #define EXP_CHARGE_UNITS 200
 #define EXP_SLEEP_RATE 5
 // Tapping a hiding spot that moves: most of the time something comes out,

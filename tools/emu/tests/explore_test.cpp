@@ -78,17 +78,18 @@ int main(){
 
   // --- the bar
   ck(pet.expCharges() == EXP_MAX, "a save with no bar yet starts with it full");
+  ck(EXP_MAX == 5, "five outings (3.37), the documented number");
   for (int i = 0; i < EXP_MAX; i++) pet.expSpend();
-  ck(pet.expCharges() == 0 && !pet.expSpend(), "three outings, then none");
+  ck(pet.expCharges() == 0 && !pet.expSpend(), "EXP_MAX outings, then none");
   ck(pet.expMinutesToNext() == EXP_CHARGE_UNITS, "the next one is a full charge away");
   for (int i = 0; i < EXP_CHARGE_UNITS - 1; i++) pet.dbgTick();
   ck(pet.expCharges() == 0, "not a minute early");
   pet.dbgTick();
-  ck(pet.expCharges() == 1, "one back after 200 awake minutes (10 h for three)");
+  ck(pet.expCharges() == 1, "one back after 200 awake minutes");
   pet.sleeping = true; pet.sleepAuto = SLEEP_PLAYER;
   for (int i = 0; i < EXP_CHARGE_UNITS / EXP_SLEEP_RATE; i++) pet.dbgTick();
   pet.sleeping = false; pet.sleepAuto = SLEEP_NONE;
-  ck(pet.expCharges() == 2, "asleep it comes back five times as fast (2 h for three)");
+  ck(pet.expCharges() == 2, "asleep it comes back five times as fast");
   pet.expGain(14UL * 24 * 60 * EXP_SLEEP_RATE);                       // two weeks asleep, off
   ck(pet.expCharges() == EXP_MAX && pet.expMinutesToNext() == 0, "and never past full, however long");
 
