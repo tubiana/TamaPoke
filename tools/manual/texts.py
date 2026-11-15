@@ -92,7 +92,7 @@ EN = dict(
   e4='**Watch closely!** One hiding place **moves**. Tap it quickly... a wild Pokémon jumps out!',
   e5='To go back, tap the **arrow** next to the title.',
   ocean_cap='the ocean', volcano_cap='the volcano',
-  explore_tip='The balls come back by themselves: all 3 in **10 hours**, or in **2 hours while your Pokémon sleeps**. Sometimes a wild Pokémon gets scared and **runs away**, but now you have seen it! Pokémon you have never seen are easier to find.',
+  explore_tip='The balls come back by themselves: all 5 in **about 17 hours**, or in **3 and a half hours while your Pokémon sleeps**. Sometimes a wild Pokémon gets scared and **runs away**, but now you have seen it! Pokémon you have never seen are easier to find.',
 
   p_catch='Catch them!',
   catch_intro='A wild Pokémon appeared! Battle it and try to catch it.',
@@ -244,7 +244,7 @@ FR = dict(
   e4='**Regarde bien !** Une cachette **bouge**. Touche-la vite... un Pokémon sauvage apparaît !',
   e5='Pour revenir, touche la **flèche** à côté du titre.',
   ocean_cap='l\'océan', volcano_cap='le volcan',
-  explore_tip='Les balls reviennent toutes seules : les 3 en **10 heures**, ou en **2 heures pendant que ton Pokémon dort**. Parfois, le Pokémon sauvage a peur et **s\'enfuit**, mais maintenant tu l\'as vu ! Les Pokémon que tu n\'as jamais vus sont plus faciles à trouver.',
+  explore_tip='Les balls reviennent toutes seules : les 5 en **17 heures environ**, ou en **3 heures et demie pendant que ton Pokémon dort**. Parfois, le Pokémon sauvage a peur et **s\'enfuit**, mais maintenant tu l\'as vu ! Les Pokémon que tu n\'as jamais vus sont plus faciles à trouver.',
 
   p_catch='Attrape-les !',
   catch_intro='Un Pokémon sauvage apparaît ! Combats-le et essaie de l\'attraper.',
@@ -400,7 +400,7 @@ DE = dict(
   e4='**Schau genau hin!** Ein Versteck **bewegt sich**. Tippe es schnell an... ein wildes Pokémon springt heraus!',
   e5='Zum Zurückgehen tippe auf den **Pfeil** neben dem Titel.',
   ocean_cap='das Meer', volcano_cap='der Vulkan',
-  explore_tip='Die Bälle kommen von selbst zurück: alle 3 in **10 Stunden**, oder in **2 Stunden, während dein Pokémon schläft**. Manchmal bekommt ein wildes Pokémon Angst und **läuft weg**, aber jetzt hast du es gesehen! Pokémon, die du noch nie gesehen hast, findest du leichter.',
+  explore_tip='Die Bälle kommen von selbst zurück: alle 5 in **etwa 17 Stunden**, oder in **dreieinhalb Stunden, während dein Pokémon schläft**. Manchmal bekommt ein wildes Pokémon Angst und **läuft weg**, aber jetzt hast du es gesehen! Pokémon, die du noch nie gesehen hast, findest du leichter.',
 
   p_catch='Fang sie!',
   catch_intro='Ein wildes Pokémon ist erschienen! Kämpfe gegen es und versuche, es zu fangen.',

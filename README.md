@@ -3,7 +3,7 @@
 [![Flash in browser](https://img.shields.io/badge/flash-in%20browser-FF6B00?logo=googlechrome&logoColor=white)](https://tubiana.github.io/TamaPoke/web/)
 [![MakerWorld](https://img.shields.io/badge/MakerWorld-3D%20case-00AE42?logo=bambulab&logoColor=white)](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)
 ![Board](https://img.shields.io/badge/board-ESP32--S3%20round%20AMOLED-E7352C?logo=espressif&logoColor=white)
-![Firmware](https://img.shields.io/badge/firmware-v3.36-8A2BE2)
+![Firmware](https://img.shields.io/badge/firmware-v3.37-8A2BE2)
 ![Code](https://img.shields.io/badge/code-MIT-blue)
 ![Languages](https://img.shields.io/badge/languages-7-FFCB05)
 [![Stars](https://img.shields.io/github/stars/tubiana/TamaPoke?style=flat&logo=github&color=yellow)](https://github.com/tubiana/TamaPoke/stargazers)
@@ -44,7 +44,7 @@ and complete them all (shinies included).
 
 ## What this fork adds
 
-New since Dylan's v3.11, up to v3.36 (the details are in
+New since Dylan's v3.11, up to v3.37 (the details are in
 [docs/fork-changes.md](docs/fork-changes.md)):
 
 - 🧭 [**A menu of big tiles**](#a-menu-of-big-tiles): everything in three pages, trading included
@@ -455,8 +455,8 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
 Menu > **EXPLORE** opens a map of an island with eight places. Tap one, then
 tap the hiding spot that is **moving** (grass, sand, rocks, bubbles, snow or
 lava, by place).
-- **Outings: 3 at most.** One comes back every **200 awake minutes** or **40
-  asleep** -- a full bar in **10 h** awake or **2 h** of sleep. Switched off it
+- **Outings: 5 at most** (3 before v3.37). One comes back every **200 awake
+  minutes** or **40 asleep** -- a full bar in **16 h 40** awake or **3 h 20** of sleep. Switched off it
   recharges at the rate of the state it was left in. Tapping a spot that is
   *not* moving costs nothing.
 - **Who lives where.** Meadow, beach, forest, volcano, mountain and snow are the
